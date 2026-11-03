@@ -1,5 +1,6 @@
 const { Events, AttachmentBuilder, PermissionFlagsBits } = require("discord.js");
 const ticketApplications = require("../utils/ticketApplications");
+const serverTickets = require("../utils/serverTickets");
 
 async function handleTicketButton(interaction) {
     const [, action, kind] = interaction.customId.split(":");
@@ -286,6 +287,14 @@ module.exports = {
 
     async execute(interaction) {
         try {
+            if (interaction.isButton() && interaction.customId.startsWith("server-ticket:")) {
+                return await serverTickets.handlePanelButton(interaction);
+            }
+
+            if (interaction.isModalSubmit() && interaction.customId.startsWith("server-ticket:")) {
+                return await serverTickets.handleTicketModal(interaction);
+            }
+
             if (interaction.isButton() && interaction.customId.startsWith("ticketapp:")) {
                 return await handleTicketButton(interaction);
             }

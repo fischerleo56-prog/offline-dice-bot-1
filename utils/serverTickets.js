@@ -16,41 +16,41 @@ const ticketTypes = {
         label: "Support",
         emoji: "🛠️",
         channelPrefix: "support",
-        modalTitle: "Support-Ticket erstellen"
+        modalTitle: "Create a Support Ticket"
     },
     person_report: {
-        label: "Person melden",
+        label: "Report a User",
         emoji: "🚨",
-        channelPrefix: "person-melden",
-        modalTitle: "Person melden"
+        channelPrefix: "report-user",
+        modalTitle: "Report a User"
     },
     server_report: {
-        label: "Serverproblem melden",
+        label: "Report a Server Issue",
         emoji: "⚠️",
-        channelPrefix: "server-melden",
-        modalTitle: "Serverproblem melden"
+        channelPrefix: "report-server",
+        modalTitle: "Report a Server Issue"
     },
     other: {
-        label: "Sonstiges",
+        label: "Other",
         emoji: "✉️",
-        channelPrefix: "sonstiges",
-        modalTitle: "Sonstiges Ticket"
+        channelPrefix: "other",
+        modalTitle: "Other Request"
     }
 };
 
 function buildPanel() {
     const embed = new EmbedBuilder()
         .setColor(0x5865f2)
-        .setTitle("🎫 Support & Meldungen")
+        .setTitle("🎫 Support & Reports")
         .setDescription(
-            "Wähle unten aus, worum es geht. Der Bot erstellt einen privaten Ticket-Channel, " +
-            "in dem du direkt mit dem Serverteam schreiben kannst."
+            "Choose what you need help with below. The bot will create a private ticket channel " +
+            "where you can talk directly with the server team. Please write in English."
         )
         .addFields({
-            name: "Bitte beachten",
-            value: "Beschreibe dein Anliegen möglichst genau. Nur du und das zuständige Team können dein Ticket sehen."
+            name: "Please note",
+            value: "Describe your request clearly. Only you and the relevant staff team can see your ticket."
         })
-        .setFooter({ text: "Ein Ticket kannst du jederzeit selbst schließen." });
+        .setFooter({ text: "You can close your ticket at any time." });
 
     const buttons = Object.entries(ticketTypes).map(([type, details]) =>
         new ButtonBuilder()
@@ -68,12 +68,12 @@ function buildPanel() {
 
 function buildTicketModal(type) {
     const details = ticketTypes[type];
-    if (!details) throw new Error(`Unbekannter Ticket-Typ: ${type}`);
+    if (!details) throw new Error(`Unknown ticket type: ${type}`);
 
     const subject = new TextInputBuilder()
         .setCustomId("ticket_subject")
-        .setLabel("Kurzer Titel")
-        .setPlaceholder("Worum geht es?")
+        .setLabel("Short title")
+        .setPlaceholder("What is this about? Please write in English.")
         .setStyle(TextInputStyle.Short)
         .setMinLength(3)
         .setMaxLength(100)
@@ -81,8 +81,8 @@ function buildTicketModal(type) {
 
     const description = new TextInputBuilder()
         .setCustomId("ticket_description")
-        .setLabel("Beschreibung")
-        .setPlaceholder("Erkläre kurz, was passiert ist oder wobei du Hilfe brauchst.")
+        .setLabel("Description")
+        .setPlaceholder("Explain what happened or what help you need. Please write in English.")
         .setStyle(TextInputStyle.Paragraph)
         .setMinLength(10)
         .setMaxLength(1000)
@@ -90,8 +90,8 @@ function buildTicketModal(type) {
 
     const target = new TextInputBuilder()
         .setCustomId("ticket_target")
-        .setLabel("Person, Channel oder Bereich (optional)")
-        .setPlaceholder("Zum Beispiel @Nutzer oder #Channel")
+        .setLabel("Person, channel, or area (optional)")
+        .setPlaceholder("For example, a username or channel name")
         .setStyle(TextInputStyle.Short)
         .setMaxLength(100)
         .setRequired(false);
@@ -143,7 +143,7 @@ function buildTicketControls(action = "close") {
     const isClosed = action === "reopen";
     const button = new ButtonBuilder()
         .setCustomId(`server-ticket:${action}`)
-        .setLabel(isClosed ? "Ticket wieder öffnen" : "Ticket schließen")
+        .setLabel(isClosed ? "Reopen ticket" : "Close ticket")
         .setEmoji(isClosed ? "🔓" : "🔒")
         .setStyle(isClosed ? ButtonStyle.Success : ButtonStyle.Secondary);
 
@@ -156,11 +156,11 @@ function buildOpeningEmbed(type, ownerId, subject, description, target) {
         .setColor(0x5865f2)
         .setTitle(`${details.emoji} ${details.label}: ${subject}`)
         .setDescription(description)
-        .addFields({ name: "Erstellt von", value: `<@${ownerId}>`, inline: true })
-        .setFooter({ text: "Das Ticketteam kann hier antworten. Mit dem Button kannst du schließen." })
+        .addFields({ name: "Created by", value: `<@${ownerId}>`, inline: true })
+        .setFooter({ text: "The support team can reply here. Use the button to close this ticket." })
         .setTimestamp();
 
-    if (target) embed.addFields({ name: "Betroffene Person / Bereich", value: target });
+    if (target) embed.addFields({ name: "Reported person / area", value: target });
     return embed;
 }
 
@@ -208,13 +208,13 @@ async function handlePanelButton(interaction) {
 
     if (action === "open") {
         if (!interaction.guild || !ticketTypes[type]) {
-            return interaction.reply({ content: "❌ Dieses Ticket-Panel ist ungültig.", ephemeral: true });
+            return interaction.reply({ content: "❌ This ticket panel is invalid.", ephemeral: true });
         }
 
         const existing = await findExistingTicket(interaction.guild, interaction.user.id, type);
         if (existing) {
             return interaction.reply({
-                content: `Du hast für dieses Thema bereits ein offenes Ticket: <#${existing.id}>`,
+                content: `You already have an open ticket for this topic: <#${existing.id}>`,
                 ephemeral: true
             });
         }
@@ -229,7 +229,7 @@ async function handlePanelButton(interaction) {
 async function handleTicketModal(interaction) {
     const [, action, type] = interaction.customId.split(":");
     if (action !== "submit" || !interaction.guild || !ticketTypes[type]) {
-        return interaction.reply({ content: "❌ Dieses Ticketformular ist ungültig.", ephemeral: true });
+        return interaction.reply({ content: "❌ This ticket form is invalid.", ephemeral: true });
     }
 
     await interaction.deferReply({ ephemeral: true });
@@ -237,13 +237,13 @@ async function handleTicketModal(interaction) {
     try {
         const existing = await findExistingTicket(interaction.guild, interaction.user.id, type);
         if (existing) {
-            return interaction.editReply(`Du hast für dieses Thema bereits ein offenes Ticket: <#${existing.id}>`);
+            return interaction.editReply(`You already have an open ticket for this topic: <#${existing.id}>`);
         }
 
         const guild = interaction.guild;
         const botMember = guild.members.me || await guild.members.fetchMe();
         if (!botMember.permissions.has(PermissionFlagsBits.ManageChannels)) {
-            return interaction.editReply("❌ Der Bot braucht die Berechtigung **Kanäle verwalten**, um Tickets zu erstellen.");
+            return interaction.editReply("❌ The bot needs the **Manage Channels** permission to create tickets.");
         }
 
         const staffRoles = getStaffRoles(guild);
@@ -304,7 +304,7 @@ async function handleTicketModal(interaction) {
         const staffToNotify = [...staffRoles.values()].filter(role => staffRolePattern.test(role.name));
         const staffMentions = staffToNotify.map(role => `<@&${role.id}>`).join(" ");
         await channel.send({
-            content: `${staffMentions} <@${interaction.user.id}> Dein Ticket ist eröffnet. Das Serverteam kann dir hier antworten.`,
+            content: `${staffMentions} <@${interaction.user.id}> Your ticket is open. The server team can reply here.`,
             embeds: [buildOpeningEmbed(type, interaction.user.id, subject, description, target)],
             components: buildTicketControls(),
             allowedMentions: {
@@ -313,23 +313,23 @@ async function handleTicketModal(interaction) {
             }
         });
 
-        return interaction.editReply(`✅ Dein privates Ticket wurde erstellt: <#${channel.id}>`);
+        return interaction.editReply(`✅ Your private ticket has been created: <#${channel.id}>`);
     } catch (error) {
-        console.error("❌ Ticket konnte nicht erstellt werden:", error);
-        return interaction.editReply("❌ Das Ticket konnte nicht erstellt werden. Prüfe, ob der Bot **Kanäle verwalten** darf.");
+        console.error("❌ Could not create ticket:", error);
+        return interaction.editReply("❌ The ticket could not be created. Check that the bot has **Manage Channels** permission.");
     }
 }
 
 async function closeTicket(interaction) {
     const ticket = readTicketTopic(interaction.channel);
     if (!ticket) {
-        return interaction.reply({ content: "❌ Das ist kein Ticket-Channel.", ephemeral: true });
+        return interaction.reply({ content: "❌ This is not a ticket channel.", ephemeral: true });
     }
     if (ticket.status !== "open") {
-        return interaction.reply({ content: "Dieses Ticket ist bereits geschlossen.", ephemeral: true });
+        return interaction.reply({ content: "This ticket is already closed.", ephemeral: true });
     }
     if (interaction.user.id !== ticket.ownerId && !isStaff(interaction)) {
-        return interaction.reply({ content: "Nur der Ersteller oder das Serverteam kann dieses Ticket schließen.", ephemeral: true });
+        return interaction.reply({ content: "Only the ticket creator or server staff can close this ticket.", ephemeral: true });
     }
 
     await interaction.deferReply({ ephemeral: true });
@@ -343,19 +343,19 @@ async function closeTicket(interaction) {
     await interaction.channel.setTopic(makeTicketTopic(ticket.ownerId, ticket.type, "closed"));
 
     const embed = EmbedBuilder.from(interaction.message.embeds[0] || new EmbedBuilder().setTitle("Ticket"))
-        .setFooter({ text: `Geschlossen von ${interaction.user.tag}` });
+        .setFooter({ text: `Closed by ${interaction.user.tag}` });
     await interaction.message.edit({ embeds: [embed], components: buildTicketControls("reopen") });
-    await interaction.channel.send(`🔒 Ticket geschlossen von <@${interaction.user.id}>.`);
-    return interaction.editReply("✅ Ticket geschlossen und für das Team archiviert.");
+    await interaction.channel.send(`🔒 Ticket closed by <@${interaction.user.id}>.`);
+    return interaction.editReply("✅ Ticket closed and archived for the team.");
 }
 
 async function reopenTicket(interaction) {
     const ticket = readTicketTopic(interaction.channel);
     if (!ticket || ticket.status !== "closed") {
-        return interaction.reply({ content: "❌ Dieses Ticket ist nicht geschlossen.", ephemeral: true });
+        return interaction.reply({ content: "❌ This ticket is not closed.", ephemeral: true });
     }
     if (!isStaff(interaction)) {
-        return interaction.reply({ content: "Nur das Serverteam kann ein Ticket wieder öffnen.", ephemeral: true });
+        return interaction.reply({ content: "Only server staff can reopen a ticket.", ephemeral: true });
     }
 
     await interaction.deferReply({ ephemeral: true });
@@ -370,10 +370,10 @@ async function reopenTicket(interaction) {
     await interaction.channel.setTopic(makeTicketTopic(ticket.ownerId, ticket.type, "open"));
 
     const embed = EmbedBuilder.from(interaction.message.embeds[0] || new EmbedBuilder().setTitle("Ticket"))
-        .setFooter({ text: "Das Ticketteam kann hier antworten. Mit dem Button kannst du schließen." });
+        .setFooter({ text: "The support team can reply here. Use the button to close this ticket." });
     await interaction.message.edit({ embeds: [embed], components: buildTicketControls() });
-    await interaction.channel.send(`🔓 Ticket wieder geöffnet von <@${interaction.user.id}>.`);
-    return interaction.editReply("✅ Ticket wieder geöffnet.");
+    await interaction.channel.send(`🔓 Ticket reopened by <@${interaction.user.id}>.`);
+    return interaction.editReply("✅ Ticket reopened.");
 }
 
 module.exports = {

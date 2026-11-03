@@ -10,7 +10,7 @@ const {
     TextInputStyle
 } = require("discord.js");
 
-const staffRolePattern = /\b(owner|admin|moderator|mod|support|staff|helper|ticket team)\b/i;
+const staffAccessFieldName = "Staff with ticket access";
 const ticketTypes = {
     support: {
         label: "Support",
@@ -38,7 +38,7 @@ const ticketTypes = {
     }
 };
 
-function buildPanel() {
+function buildPanel(staffRoleIds) {
     const embed = new EmbedBuilder()
         .setColor(0x5865f2)
         .setTitle("🎫 Support & Reports")
@@ -48,7 +48,10 @@ function buildPanel() {
         )
         .addFields({
             name: "Please note",
-            value: "Describe your request clearly. Only you and the relevant staff team can see your ticket."
+            value: "Describe your request clearly. Only you, the selected staff roles, and server administrators can see your ticket."
+        }, {
+            name: staffAccessFieldName,
+            value: staffRoleIds.map(roleId => `<@&${roleId}>`).join(", ")
         })
         .setFooter({ text: "You can close your ticket at any time." });
 
@@ -66,7 +69,12 @@ function buildPanel() {
     };
 }
 
-function buildTicketModal(type) {
+function getPanelStaffRoleIds(panelMessage) {
+    const field = panelMessage.embeds[0]?.fields.find(item => item.name === staffAccessFieldName);
+    return [...(field?.value || "").matchAll(/<@&(\d+)>/g)].map(match => match[1]);
+}
+
+function buildTicketModal(type, panelMessageId) {
     const details = ticketTypes[type];
     if (!details) throw new Error(`Unknown ticket type: ${type}`);
 
@@ -97,7 +105,7 @@ function buildTicketModal(type) {
         .setRequired(false);
 
     return new ModalBuilder()
-        .setCustomId(`server-ticket:submit:${type}`)
+        .setCustomId(`server-ticket:submit:${type}:${panelMessageId}`)
         .setTitle(details.modalTitle)
         .addComponents(
             new ActionRowBuilder().addComponents(subject),
@@ -106,46 +114,27 @@ function buildTicketModal(type) {
         );
 }
 
-function getStaffRoles(guild) {
-    return guild.roles.cache.filter(role =>
-        role.id !== guild.roles.everyone.id &&
-        (role.permissions.has(PermissionFlagsBits.Administrator) ||
-            role.permissions.has(PermissionFlagsBits.ManageChannels) ||
-            role.permissions.has(PermissionFlagsBits.ManageMessages) ||
-            staffRolePattern.test(role.name))
-    );
-}
-
-function isStaff(interaction) {
-    const permissions = interaction.memberPermissions || interaction.member?.permissions;
-    if (
-        permissions?.has(PermissionFlagsBits.Administrator) ||
-        permissions?.has(PermissionFlagsBits.ManageChannels) ||
-        permissions?.has(PermissionFlagsBits.ManageMessages)
-    ) {
-        return true;
-    }
-
-    return Boolean(interaction.member?.roles?.cache?.some(role => staffRolePattern.test(role.name)));
-}
-
-function makeTicketTopic(ownerId, type, status = "open") {
-    return `server-ticket|owner=${ownerId}|type=${type}|status=${status}`;
+function makeTicketTopic(ownerId, type, staffRoleIds, status = "open") {
+    return `server-ticket|owner=${ownerId}|type=${type}|roles=${staffRoleIds.join(",")}|status=${status}`;
 }
 
 function readTicketTopic(channel) {
-    const match = /^server-ticket\|owner=(\d+)\|type=([a-z_]+)\|status=(open|closed)$/.exec(channel.topic || "");
+    const match = /^server-ticket\|owner=(\d+)\|type=([a-z_]+)\|roles=([\d,]+)\|status=(open|closed)$/.exec(channel.topic || "");
     if (!match) return null;
-    return { ownerId: match[1], type: match[2], status: match[3] };
+    return {
+        ownerId: match[1],
+        type: match[2],
+        staffRoleIds: match[3].split(","),
+        status: match[4]
+    };
 }
 
-function buildTicketControls(action = "close") {
-    const isClosed = action === "reopen";
+function buildTicketControls() {
     const button = new ButtonBuilder()
-        .setCustomId(`server-ticket:${action}`)
-        .setLabel(isClosed ? "Reopen ticket" : "Close ticket")
-        .setEmoji(isClosed ? "🔓" : "🔒")
-        .setStyle(isClosed ? ButtonStyle.Success : ButtonStyle.Secondary);
+        .setCustomId("server-ticket:close")
+        .setLabel("Close & delete")
+        .setEmoji("🗑️")
+        .setStyle(ButtonStyle.Danger);
 
     return [new ActionRowBuilder().addComponents(button)];
 }
@@ -173,36 +162,6 @@ async function findExistingTicket(guild, ownerId, type) {
     });
 }
 
-async function getTicketCategory(guild, staffRoles, botMember) {
-    let category = guild.channels.cache.find(channel =>
-        channel.type === ChannelType.GuildCategory && channel.name === "🎫 TICKETS"
-    );
-
-    if (category) return category;
-
-    const permissionOverwrites = [
-        {
-            id: guild.roles.everyone.id,
-            deny: [PermissionFlagsBits.ViewChannel]
-        },
-        ...staffRoles.map(role => ({
-            id: role.id,
-            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ManageChannels]
-        })),
-        {
-            id: botMember.id,
-            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ManageChannels]
-        }
-    ];
-
-    category = await guild.channels.create({
-        name: "🎫 TICKETS",
-        type: ChannelType.GuildCategory,
-        permissionOverwrites
-    });
-    return category;
-}
-
 async function handlePanelButton(interaction) {
     const [, action, type] = interaction.customId.split(":");
 
@@ -211,30 +170,30 @@ async function handlePanelButton(interaction) {
             return interaction.reply({ content: "❌ This ticket panel is invalid.", ephemeral: true });
         }
 
-        const existing = await findExistingTicket(interaction.guild, interaction.user.id, type);
-        if (existing) {
-            return interaction.reply({
-                content: `You already have an open ticket for this topic: <#${existing.id}>`,
-                ephemeral: true
-            });
-        }
-
-        return interaction.showModal(buildTicketModal(type));
+        return interaction.showModal(buildTicketModal(type, interaction.message.id));
     }
 
     if (action === "close") return closeTicket(interaction);
-    if (action === "reopen") return reopenTicket(interaction);
 }
 
 async function handleTicketModal(interaction) {
-    const [, action, type] = interaction.customId.split(":");
-    if (action !== "submit" || !interaction.guild || !ticketTypes[type]) {
+    const [, action, type, panelMessageId] = interaction.customId.split(":");
+    if (action !== "submit" || !interaction.guild || !ticketTypes[type] || !panelMessageId) {
         return interaction.reply({ content: "❌ This ticket form is invalid.", ephemeral: true });
     }
 
     await interaction.deferReply({ ephemeral: true });
 
     try {
+        const panelMessage = await interaction.channel.messages.fetch(panelMessageId);
+        const staffRoleIds = getPanelStaffRoleIds(panelMessage);
+        const staffRoles = staffRoleIds
+            .map(roleId => interaction.guild.roles.cache.get(roleId))
+            .filter(Boolean);
+        if (!staffRoleIds.length || staffRoles.length !== staffRoleIds.length) {
+            return interaction.editReply("❌ The staff roles for this panel are unavailable. Please post a new panel with `/ticketpanel`.");
+        }
+
         const existing = await findExistingTicket(interaction.guild, interaction.user.id, type);
         if (existing) {
             return interaction.editReply(`You already have an open ticket for this topic: <#${existing.id}>`);
@@ -246,8 +205,6 @@ async function handleTicketModal(interaction) {
             return interaction.editReply("❌ The bot needs the **Manage Channels** permission to create tickets.");
         }
 
-        const staffRoles = getStaffRoles(guild);
-        const category = await getTicketCategory(guild, staffRoles, botMember);
         const permissionOverwrites = [
             {
                 id: guild.roles.everyone.id,
@@ -293,23 +250,21 @@ async function handleTicketModal(interaction) {
         const channel = await guild.channels.create({
             name: `ticket-${ticketTypes[type].channelPrefix}-${username}`.slice(0, 100),
             type: ChannelType.GuildText,
-            parent: category.id,
-            topic: makeTicketTopic(interaction.user.id, type),
+            topic: makeTicketTopic(interaction.user.id, type, staffRoleIds),
             permissionOverwrites
         });
 
         const subject = interaction.fields.getTextInputValue("ticket_subject").trim();
         const description = interaction.fields.getTextInputValue("ticket_description").trim();
         const target = interaction.fields.getTextInputValue("ticket_target").trim();
-        const staffToNotify = [...staffRoles.values()].filter(role => staffRolePattern.test(role.name));
-        const staffMentions = staffToNotify.map(role => `<@&${role.id}>`).join(" ");
+        const staffMentions = staffRoleIds.map(roleId => `<@&${roleId}>`).join(" ");
         await channel.send({
             content: `${staffMentions} <@${interaction.user.id}> Your ticket is open. The server team can reply here.`,
             embeds: [buildOpeningEmbed(type, interaction.user.id, subject, description, target)],
             components: buildTicketControls(),
             allowedMentions: {
                 users: [interaction.user.id],
-                roles: staffToNotify.map(role => role.id)
+                roles: staffRoleIds
             }
         });
 
@@ -328,52 +283,25 @@ async function closeTicket(interaction) {
     if (ticket.status !== "open") {
         return interaction.reply({ content: "This ticket is already closed.", ephemeral: true });
     }
-    if (interaction.user.id !== ticket.ownerId && !isStaff(interaction)) {
+    const permissions = interaction.memberPermissions || interaction.member?.permissions;
+    const hasStaffRole = interaction.member?.roles?.cache?.some(role => ticket.staffRoleIds.includes(role.id));
+    const canManageTicket = permissions?.has(PermissionFlagsBits.Administrator) ||
+        permissions?.has(PermissionFlagsBits.ManageChannels) || hasStaffRole;
+    if (interaction.user.id !== ticket.ownerId && !canManageTicket) {
         return interaction.reply({ content: "Only the ticket creator or server staff can close this ticket.", ephemeral: true });
     }
 
     await interaction.deferReply({ ephemeral: true });
-    await interaction.channel.permissionOverwrites.edit(ticket.ownerId, {
-        ViewChannel: false,
-        SendMessages: false
-    });
-    if (!interaction.channel.name.startsWith("closed-")) {
-        await interaction.channel.setName(`closed-${interaction.channel.name}`.slice(0, 100));
-    }
-    await interaction.channel.setTopic(makeTicketTopic(ticket.ownerId, ticket.type, "closed"));
+    const channel = interaction.channel;
+    await channel.setTopic(makeTicketTopic(ticket.ownerId, ticket.type, ticket.staffRoleIds, "closed"));
+    await channel.send(`🗑️ Ticket closed by <@${interaction.user.id}>. This channel will be deleted in 5 seconds.`);
+    await interaction.editReply("✅ This ticket is closed and will be permanently deleted in 5 seconds.");
 
-    const embed = EmbedBuilder.from(interaction.message.embeds[0] || new EmbedBuilder().setTitle("Ticket"))
-        .setFooter({ text: `Closed by ${interaction.user.tag}` });
-    await interaction.message.edit({ embeds: [embed], components: buildTicketControls("reopen") });
-    await interaction.channel.send(`🔒 Ticket closed by <@${interaction.user.id}>.`);
-    return interaction.editReply("✅ Ticket closed and archived for the team.");
-}
-
-async function reopenTicket(interaction) {
-    const ticket = readTicketTopic(interaction.channel);
-    if (!ticket || ticket.status !== "closed") {
-        return interaction.reply({ content: "❌ This ticket is not closed.", ephemeral: true });
-    }
-    if (!isStaff(interaction)) {
-        return interaction.reply({ content: "Only server staff can reopen a ticket.", ephemeral: true });
-    }
-
-    await interaction.deferReply({ ephemeral: true });
-    await interaction.channel.permissionOverwrites.edit(ticket.ownerId, {
-        ViewChannel: true,
-        SendMessages: true,
-        ReadMessageHistory: true
-    });
-    if (interaction.channel.name.startsWith("closed-")) {
-        await interaction.channel.setName(interaction.channel.name.slice("closed-".length));
-    }
-    await interaction.channel.setTopic(makeTicketTopic(ticket.ownerId, ticket.type, "open"));
-
-    const embed = EmbedBuilder.from(interaction.message.embeds[0] || new EmbedBuilder().setTitle("Ticket"))
-        .setFooter({ text: "The support team can reply here. Use the button to close this ticket." });
-    await interaction.message.edit({ embeds: [embed], components: buildTicketControls() });
-    await interaction.channel.send(`🔓 Ticket reopened by <@${interaction.user.id}>.`);
-    return interaction.editReply("✅ Ticket reopened.");
+    setTimeout(() => {
+        channel.delete(`Ticket closed by ${interaction.user.tag}`).catch(error => {
+            console.error("❌ Could not delete closed ticket:", error);
+        });
+    }, 5000);
 }
 
 module.exports = {

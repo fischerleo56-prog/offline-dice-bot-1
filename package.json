@@ -1,0 +1,23 @@
+{
+  "name": "brainrot-bot-v2",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "discord.js": "^14.27.0",
+    "dotenv": "^16.4.7",
+    "express": "^5.2.1",
+    "@discordjs/voice": "^0.19.2",
+    "undici": "^7.16.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

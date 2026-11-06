@@ -3,6 +3,7 @@ const {
     PermissionFlagsBits,
     EmbedBuilder
 } = require("discord.js");
+const { sendModerationDM } = require("../utils/moderationNotifications");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -35,6 +36,14 @@ module.exports = {
         }
 
         await member.timeout(null);
+        const dmSent = await sendModerationDM(member.user, {
+            title: `Your timeout was removed in ${interaction.guild.name}`,
+            description: "A moderator removed your timeout. You can send messages in the server again.",
+            guildName: interaction.guild.name,
+            moderator: interaction.user.tag,
+            reason: "Your timeout was removed.",
+            color: 0x57f287
+        });
 
         const embed = new EmbedBuilder()
             .setColor("Green")
@@ -49,6 +58,10 @@ module.exports = {
                     name: "🛡️ Moderator",
                     value: interaction.user.tag,
                     inline: true
+                },
+                {
+                    name: "DM notice",
+                    value: dmSent ? "Sent" : "Could not be delivered; the user may have DMs disabled."
                 }
             )
             .setTimestamp();

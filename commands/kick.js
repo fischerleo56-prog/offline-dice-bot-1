@@ -3,6 +3,7 @@ const {
     PermissionFlagsBits,
     EmbedBuilder
 } = require("discord.js");
+const { sendModerationDM } = require("../utils/moderationNotifications");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -77,7 +78,30 @@ module.exports = {
             });
         }
 
-        await member.kick(reason);
+        const dmSent = await sendModerationDM(member.user, {
+            title: `You are being kicked from ${interaction.guild.name}`,
+            description: "A moderator is removing you from this server.",
+            guildName: interaction.guild.name,
+            moderator: interaction.user.tag,
+            reason,
+            color: 0xfee75c
+        });
+
+        try {
+            await member.kick(reason);
+        } catch (error) {
+            if (dmSent) {
+                await sendModerationDM(member.user, {
+                    title: `The kick from ${interaction.guild.name} was not completed`,
+                    description: "The moderation action could not be completed, so your account remains in the server.",
+                    guildName: interaction.guild.name,
+                    moderator: interaction.user.tag,
+                    reason: "The kick action failed.",
+                    color: 0xfee75c
+                });
+            }
+            throw error;
+        }
 
         const embed = new EmbedBuilder()
             .setColor("Green")
@@ -96,6 +120,10 @@ module.exports = {
                 {
                     name: "📝 Reason",
                     value: reason
+                },
+                {
+                    name: "DM notice",
+                    value: dmSent ? "Sent before the kick" : "Could not be delivered; the user may have DMs disabled."
                 }
             )
             .setTimestamp();

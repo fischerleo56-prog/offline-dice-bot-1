@@ -1,6 +1,43 @@
-const { Events, AttachmentBuilder, PermissionFlagsBits } = require("discord.js");
+const { Events, AttachmentBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 const ticketApplications = require("../utils/ticketApplications");
 const serverTickets = require("../utils/serverTickets");
+
+async function notifyApplicantByDM(interaction, application, status) {
+    const messages = {
+        approved: {
+            title: "Your Top Streamer / VIP application was approved",
+            description: "The server team approved your application. They can follow up with you in your ticket.",
+            color: 0x57f287
+        },
+        rejected: {
+            title: "Your Top Streamer / VIP application was declined",
+            description: "The server team declined your application. If you have questions, contact the team in your ticket.",
+            color: 0xed4245
+        },
+        needs_info: {
+            title: "More information is needed for your application",
+            description: "The server team needs more information. Use the application button in your ticket to submit an updated application.",
+            color: 0xfee75c
+        }
+    };
+    const message = messages[status];
+    const ticketUrl = `https://discord.com/channels/${interaction.guildId}/${interaction.channelId}`;
+    const embed = new EmbedBuilder()
+        .setColor(message.color)
+        .setTitle(message.title)
+        .setDescription(`${message.description}\n\n[Open your ticket](${ticketUrl})`)
+        .setFooter({ text: interaction.guild?.name || "Discord server" })
+        .setTimestamp();
+
+    try {
+        const applicant = await interaction.client.users.fetch(application.applicantId);
+        await applicant.send({ embeds: [embed], allowedMentions: { parse: [] } });
+        return true;
+    } catch (error) {
+        console.warn(`Could not DM applicant ${application.applicantId}:`, error.message);
+        return false;
+    }
+}
 
 async function handleTicketButton(interaction) {
     const [, action, kind] = interaction.customId.split(":");
@@ -89,6 +126,13 @@ async function handleTicketButton(interaction) {
             : action === "reject"
                 ? "rejected"
                 : "needs_info";
+        if (application.status === status) {
+            return interaction.reply({
+                content: `This application is already marked as ${status.replace("_", " ")}.`,
+                ephemeral: true
+            });
+        }
+
         const updated = { ...application, status, decidedBy: interaction.user.id };
         ticketApplications.saveApplication(interaction.guildId, interaction.channelId, updated);
 
@@ -102,10 +146,22 @@ async function handleTicketButton(interaction) {
             rejected: `❌ <@${application.applicantId}>, your application was declined. Please contact staff if you have questions.`,
             needs_info: `📝 <@${application.applicantId}>, staff need a little more information. Please use the application button above to submit an updated form.`
         };
-        await interaction.channel.send({
-            content: messages[status],
-            allowedMentions: { users: [application.applicantId] }
-        });
+        try {
+            await interaction.channel.send({
+                content: messages[status],
+                allowedMentions: { users: [application.applicantId] }
+            });
+        } catch (error) {
+            console.warn(`Could not post application status in ticket ${interaction.channelId}:`, error.message);
+        }
+
+        const dmSent = await notifyApplicantByDM(interaction, application, status);
+        if (!dmSent) {
+            await interaction.followUp({
+                content: "⚠️ The decision was saved, but I couldn't DM the applicant. They may have disabled direct messages.",
+                ephemeral: true
+            });
+        }
         return;
     }
 

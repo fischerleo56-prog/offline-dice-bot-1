@@ -3,6 +3,7 @@ const {
     PermissionFlagsBits,
     EmbedBuilder
 } = require("discord.js");
+const { sendModerationDM } = require("../utils/moderationNotifications");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -25,6 +26,14 @@ module.exports = {
             const user = await interaction.client.users.fetch(userId);
 
             await interaction.guild.members.unban(userId);
+            const dmSent = await sendModerationDM(user, {
+                title: `You have been unbanned from ${interaction.guild.name}`,
+                description: "A moderator removed your ban. You may rejoin the server if you have a valid invite.",
+                guildName: interaction.guild.name,
+                moderator: interaction.user.tag,
+                reason: "Your ban was removed.",
+                color: 0x57f287
+            });
 
             const embed = new EmbedBuilder()
                 .setColor("Green")
@@ -39,6 +48,10 @@ module.exports = {
                         name: "🛡️ Moderator",
                         value: `${interaction.user.tag}`,
                         inline: true
+                    },
+                    {
+                        name: "DM notice",
+                        value: dmSent ? "Sent" : "Could not be delivered; the user may have DMs disabled or no mutual server."
                     }
                 )
                 .setTimestamp();

@@ -3,6 +3,7 @@ const {
     PermissionFlagsBits,
     EmbedBuilder
 } = require("discord.js");
+const { sendModerationDM } = require("../utils/moderationNotifications");
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -72,7 +73,30 @@ module.exports = {
             });
         }
 
-        await member.ban({ reason });
+        const dmSent = await sendModerationDM(member.user, {
+            title: `You are being banned from ${interaction.guild.name}`,
+            description: "A moderator is banning you from this server.",
+            guildName: interaction.guild.name,
+            moderator: interaction.user.tag,
+            reason,
+            color: 0xed4245
+        });
+
+        try {
+            await member.ban({ reason });
+        } catch (error) {
+            if (dmSent) {
+                await sendModerationDM(member.user, {
+                    title: `The ban from ${interaction.guild.name} was not completed`,
+                    description: "The moderation action could not be completed, so your account remains in the server.",
+                    guildName: interaction.guild.name,
+                    moderator: interaction.user.tag,
+                    reason: "The ban action failed.",
+                    color: 0xfee75c
+                });
+            }
+            throw error;
+        }
 
         const embed = new EmbedBuilder()
             .setColor("Red")
@@ -91,6 +115,10 @@ module.exports = {
                 {
                     name: "📝 Reason",
                     value: reason
+                },
+                {
+                    name: "DM notice",
+                    value: dmSent ? "Sent before the ban" : "Could not be delivered; the user may have DMs disabled."
                 }
             )
             .setTimestamp();

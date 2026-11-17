@@ -27,6 +27,9 @@ const client = new Client({
     ]
 });
 
+// Web-Dashboard (/dashboard)
+require("./utils/dashboardServer")(app, client);
+
 client.commands = new Collection();
 
 // Commands laden

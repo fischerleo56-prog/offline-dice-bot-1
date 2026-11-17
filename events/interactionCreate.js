@@ -1,6 +1,7 @@
 const { Events, AttachmentBuilder, EmbedBuilder, PermissionFlagsBits } = require("discord.js");
 const ticketApplications = require("../utils/ticketApplications");
 const serverTickets = require("../utils/serverTickets");
+const shopTickets = require("../utils/shopTickets");
 
 async function notifyApplicantByDM(interaction, application, status) {
     const messages = {
@@ -343,6 +344,10 @@ module.exports = {
 
     async execute(interaction) {
         try {
+            if (interaction.customId?.startsWith("shop:")) {
+                return await shopTickets.handleInteraction(interaction);
+            }
+
             if (interaction.isButton() && interaction.customId.startsWith("server-ticket:")) {
                 return await serverTickets.handlePanelButton(interaction);
             }

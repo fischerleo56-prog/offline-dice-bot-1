@@ -1,5 +1,6 @@
 const { Events } = require("discord.js");
 const registerCommands = require("../utils/registerCommands");
+const botSettings = require("../utils/botSettings");
 
 module.exports = {
     name: Events.ClientReady,
@@ -7,9 +8,7 @@ module.exports = {
 
     async execute(client) {
         console.log(`✅ ${client.user.tag} is online!`);
-        client.user.setActivity("Brainrot Community", {
-            type: 3 // Watching
-        });
+        botSettings.apply(client); // Status-Text ist im Dashboard änderbar
 
         try {
             const applicationId = client.application?.id || process.env.CLIENT_ID;

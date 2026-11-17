@@ -1,6 +1,7 @@
 const { Events } = require("discord.js");
 const ticketWelcome = require("../utils/ticketWelcome");
 const ticketApplications = require("../utils/ticketApplications");
+const shopTickets = require("../utils/shopTickets");
 
 // Offizielle Ticket-King-Bot-ID; so werden normale Serverkanäle nicht als Tickets behandelt.
 const TICKET_KING_BOT_ID = "710034409214181396";
@@ -104,6 +105,9 @@ module.exports = {
     async execute(message) {
         if (!message.guild || message.webhookId) return;
         if (!message.channel.isTextBased() || !message.channel.messages) return;
+
+        // Shop-Ticket (z. B. "228-buy-ticket"): Auswahl-Panel senden, falls noch nicht geschehen
+        await shopTickets.sendPanel(message.channel).catch(() => {});
 
         if (message.author.id === TICKET_KING_BOT_ID) {
             const info = await getTicketInfo(message.channel, message);

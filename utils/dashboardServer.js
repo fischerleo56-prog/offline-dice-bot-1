@@ -28,14 +28,14 @@ module.exports = function mountDashboard(app, client) {
     const page = fs.readFileSync(path.join(__dirname, "dashboard.html"), "utf8");
 
     if (!password || password.length < 8) {
-        console.warn("⚠️ DASHBOARD_PASSWORD fehlt (mind. 8 Zeichen) – das Web-Dashboard ist deaktiviert.");
+        console.warn("⚠️ DASHBOARD_PASSWORD is missing (min. 8 characters) – the web dashboard is disabled.");
         app.use(["/dashboard", "/api/dashboard"], (req, res) => {
-            res.status(503).send("Dashboard deaktiviert: Setze DASHBOARD_PASSWORD (mind. 8 Zeichen) in den Umgebungsvariablen.");
+            res.status(503).send("Dashboard disabled: set DASHBOARD_PASSWORD (min. 8 characters) in the environment variables.");
         });
         return;
     }
 
-    // ----- Session (signiertes Cookie) -----
+    // ----- Session (signed cookie) -----
     const sign = value => crypto.createHmac("sha256", secret).update(value).digest("hex");
 
     function readCookie(req, name) {
@@ -66,10 +66,10 @@ module.exports = function mountDashboard(app, client) {
 
     api.post("/login", (req, res) => {
         const ip = req.ip;
-        if (tooManyAttempts(ip)) return res.status(429).json({ error: "Zu viele Versuche. Warte 10 Minuten." });
+        if (tooManyAttempts(ip)) return res.status(429).json({ error: "Too many attempts. Wait 10 minutes." });
         if (!safeEqual(req.body?.password ?? "", password)) {
             attempts.get(ip).push(Date.now());
-            return res.status(401).json({ error: "Falsches Passwort." });
+            return res.status(401).json({ error: "Wrong password." });
         }
         const expires = String(Date.now() + SESSION_MS);
         const secure = req.secure || req.headers["x-forwarded-proto"] === "https";
@@ -85,25 +85,25 @@ module.exports = function mountDashboard(app, client) {
         res.json({ ok: true });
     });
 
-    // Alles ab hier nur eingeloggt; Änderungen brauchen zusätzlich den Header (CSRF-Schutz).
+    // Everything below requires login; changes also need the header (CSRF protection).
     api.use((req, res, next) => {
-        if (!isLoggedIn(req)) return res.status(401).json({ error: "Nicht eingeloggt." });
+        if (!isLoggedIn(req)) return res.status(401).json({ error: "Not logged in." });
         if (req.method !== "GET" && req.headers["x-dashboard"] !== "1") {
-            return res.status(403).json({ error: "Ungültige Anfrage." });
+            return res.status(403).json({ error: "Invalid request." });
         }
         next();
     });
 
     const wrap = handler => (req, res) => {
         Promise.resolve(handler(req, res)).catch(error => {
-            console.error("Dashboard-Fehler:", error);
-            res.status(400).json({ error: error.message || "Fehler" });
+            console.error("Dashboard error:", error);
+            res.status(400).json({ error: error.message || "Error" });
         });
     };
 
     async function getGuildOrThrow(req) {
         const guild = client.guilds.cache.get(req.params.id);
-        if (!guild) throw new Error("Server nicht gefunden (ist der Bot dort?).");
+        if (!guild) throw new Error("Server not found (is the bot on it?).");
         return guild;
     }
 
@@ -178,10 +178,10 @@ module.exports = function mountDashboard(app, client) {
     api.post("/guild/:id/post-ticketpanel", wrap(async (req, res) => {
         const guild = await getGuildOrThrow(req);
         const channel = await guild.channels.fetch(String(req.body?.channelId || ""));
-        if (!channel || channel.type !== ChannelType.GuildText) throw new Error("Bitte einen Textkanal wählen.");
+        if (!channel || channel.type !== ChannelType.GuildText) throw new Error("Please choose a text channel.");
         const roleIds = [...new Set((req.body?.roleIds || []).map(String))]
             .filter(id => id !== guild.roles.everyone.id && guild.roles.cache.has(id));
-        if (!roleIds.length) throw new Error("Bitte mindestens eine Team-Rolle wählen.");
+        if (!roleIds.length) throw new Error("Please choose at least one staff role.");
         await channel.send(serverTickets.buildPanel(roleIds));
         res.json({ ok: true });
     }));
@@ -193,5 +193,5 @@ module.exports = function mountDashboard(app, client) {
         res.type("html").send(page);
     });
 
-    console.log("🖥️ Web-Dashboard erreichbar unter /dashboard");
+    console.log("🖥️ Web dashboard available at /dashboard");
 };

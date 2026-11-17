@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -45,10 +45,10 @@ th{color:var(--mute);font-weight:500}
 
 <div id="login" class="hidden">
   <div class="card">
-    <h2>Dashboard Login</h2>
-    <p class="hint">Passwort aus der Umgebungsvariable DASHBOARD_PASSWORD.</p>
-    <input id="pw" type="password" placeholder="Passwort" autocomplete="current-password">
-    <div class="actions"><button class="btn" id="loginBtn">Einloggen</button></div>
+    <h2>Dashboard login</h2>
+    <p class="hint">Password from the DASHBOARD_PASSWORD environment variable.</p>
+    <input id="pw" type="password" placeholder="Password" autocomplete="current-password">
+    <div class="actions"><button class="btn" id="loginBtn">Log in</button></div>
   </div>
 </div>
 
@@ -92,8 +92,8 @@ async function api(path, method = "GET", body) {
     body: body ? JSON.stringify(body) : undefined
   });
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401 && path !== "/login") { showLogin(); throw new Error("Nicht eingeloggt"); }
-  if (!res.ok) throw new Error(data.error || "Fehler " + res.status);
+  if (res.status === 401 && path !== "/login") { showLogin(); throw new Error("Not logged in"); }
+  if (!res.ok) throw new Error(data.error || "Error " + res.status);
   return data;
 }
 async function run(fn, okMsg) {
@@ -117,15 +117,15 @@ async function boot() {
   guildId = localStorage.getItem("guild") && info.guilds.some(g => g.id === localStorage.getItem("guild")) ? localStorage.getItem("guild") : (info.guilds[0]?.id || "");
   sel.value = guildId;
   sel.onchange = () => { guildId = sel.value; localStorage.setItem("guild", guildId); load(); };
-  if (!guildId) { $("#view").replaceChildren(el("p", {}, "Der Bot ist auf keinem Server.")); return; }
+  if (!guildId) { $("#view").replaceChildren(el("p", {}, "The bot is not on any server.")); return; }
   renderTabs(); load();
 }
 async function load() { G = await run(() => api("/guild/" + guildId)); if (G) render(); }
 
-const TABS = [["shop", "🛒 Shop & Kanäle"], ["products", "📦 Produkte"], ["payments", "💳 Zahlungsarten"], ["orders", "🧾 Bestellungen"], ["funcs", "⚙️ Funktionen"]];
+const TABS = [["shop", "🛒 Shop & channels"], ["products", "📦 Products"], ["payments", "💳 Payment methods"], ["orders", "🧾 Orders"], ["funcs", "⚙️ Features"]];
 function renderTabs() {
   const nav = $("#tabs"); nav.replaceChildren();
-  TABS.forEach(([id, name]) => nav.append(el("button", { class: id === tab ? "on" : "", onclick: () => { tab = id; renderTabs(); render(); } }, name)));
+  TABS.forEach(([id, name]) => nav.append(el("button", { class: id === tab ? "on" : "", onclick: () => { tab = id; renderTabs(); load(); } }, name)));
 }
 function render() {
   const v = $("#view"); v.replaceChildren();
@@ -134,7 +134,7 @@ function render() {
 
 function field(label, input) { return el("div", {}, el("label", {}, label), input); }
 function channelSelect(value, withNone = true) {
-  const s = el("select", {}, withNone ? el("option", { value: "" }, "— nicht gesetzt —") : []);
+  const s = el("select", {}, withNone ? el("option", { value: "" }, "— not set —") : []);
   G.channels.forEach(c => s.append(el("option", { value: c.id }, "#" + c.name)));
   s.value = value || ""; return s;
 }
@@ -159,32 +159,32 @@ function renderShop(v) {
   const roles = roleChecks(s.staffRoleIds);
 
   v.append(el("div", { class: "card" },
-    el("h2", {}, "Kanäle"),
-    el("p", { class: "hint" }, "Shop-Kanal = hier erscheint der Katalog mit Bildern. Code-Kanal = privater Kanal (nur Team!), in den gesendete Codes kommen."),
-    el("div", { class: "row" }, field("Shop-Kanal (Katalog)", shopCh), field("Privater Code-Kanal", codeCh)),
-    el("label", {}, "Team-Rollen (werden bei Zahlung/Code gepingt und dürfen Codes bestätigen)"), roles
+    el("h2", {}, "Channels"),
+    el("p", { class: "hint" }, "Shop channel = where the catalog with images is shown. Code channel = private channel (staff only!) where submitted codes are sent."),
+    el("div", { class: "row" }, field("Shop channel (catalog)", shopCh), field("Private code channel", codeCh)),
+    el("label", {}, "Staff roles (pinged on payment/code, may confirm sales)"), roles
   ));
   v.append(el("div", { class: "card" },
-    el("h2", {}, "Ticket-Erkennung"),
-    el("p", { class: "hint" }, "Jeder neue Ticket-Kanal, dessen Name dieses Stichwort enthält (z. B. 228-buy-ticket), bekommt automatisch die Auswahl für Produkt & Zahlungsart."),
-    field("Stichwort im Kanalnamen", keyword),
-    el("div", { class: "row" }, field("Panel-Titel im Ticket", pTitle), field("Embed-Farbe", color)),
-    field("Panel-Text im Ticket", pDesc)
+    el("h2", {}, "Ticket detection"),
+    el("p", { class: "hint" }, "Every new ticket channel whose name contains this keyword (e.g. 228-buy-ticket) automatically gets the product and payment method selection."),
+    field("Keyword in channel name", keyword),
+    el("div", { class: "row" }, field("Panel title in ticket", pTitle), field("Embed color", color)),
+    field("Panel text in ticket", pDesc)
   ));
   v.append(el("div", { class: "card" },
-    el("h2", {}, "Katalog-Texte"),
-    el("div", { class: "row" }, field("Titel", title), field("Kauf-Hinweis", buy)),
-    field("Beschreibung", desc),
+    el("h2", {}, "Catalog texts"),
+    el("div", { class: "row" }, field("Title", title), field("How to buy (hint)", buy)),
+    field("Description", desc),
     el("div", { class: "actions" },
       el("button", { class: "btn", onclick: () => run(async () => {
         G.settings = await api(`/guild/${guildId}/settings`, "PUT", {
           shopChannelId: shopCh.value, codeChannelId: codeCh.value, ticketKeyword: keyword.value, staffRoleIds: roles.values(),
           color: color.value, shopTitle: title.value, shopDescription: desc.value, buyInfo: buy.value, panelTitle: pTitle.value, panelDescription: pDesc.value
         });
-      }, "✅ Gespeichert") }, "Speichern"),
-      el("button", { class: "btn ok", onclick: () => run(() => api(`/guild/${guildId}/post-catalog`, "POST"), "✅ Katalog gepostet/aktualisiert") }, "📣 Katalog im Shop-Kanal posten / aktualisieren")
+      }, "✅ Saved") }, "Save"),
+      el("button", { class: "btn ok", onclick: () => run(() => api(`/guild/${guildId}/post-catalog`, "POST"), "✅ Catalog posted / updated") }, "📣 Post / update catalog in shop channel")
     ),
-    el("p", { class: "hint" }, "Erst speichern, dann posten. Beim erneuten Posten werden die alten Katalog-Nachrichten ersetzt.")
+    el("p", { class: "hint" }, "Save first, then post. Posting again updates the existing catalog messages.")
   ));
 }
 
@@ -201,29 +201,30 @@ function renderProducts(v) {
       holder.append(el("div", { class: "item" },
         el("div", { class: "row" },
           field("Name", bind("name", el("input", { value: p.name || "" }))),
-          field("Preis (Text, z. B. 5,00 €)", bind("price", el("input", { value: p.price || "" }))),
-          field("Emoji (optional)", bind("emoji", el("input", { value: p.emoji || "" })))
+          field("Price (text, e.g. €5.00)", bind("price", el("input", { value: p.price || "" }))),
+          field("Emoji (optional)", bind("emoji", el("input", { value: p.emoji || "" }))),
+          field("Stock (empty = unlimited)", bind("stock", el("input", { type: "number", min: "0", step: "1", value: p.stock ?? "", placeholder: "e.g. 10" })))
         ),
-        field("Beschreibung", bind("description", el("textarea", {}, p.description || ""))),
-        field("Bild-URL (https://…)", bind("imageUrl", el("input", { value: p.imageUrl || "", placeholder: "https://i.imgur.com/…png" }))),
-        el("label", { class: "chk" }, stock, "Auf Lager"),
+        field("Description", bind("description", el("textarea", {}, p.description || ""))),
+        field("Image URL (https://…)", bind("imageUrl", el("input", { value: p.imageUrl || "", placeholder: "https://i.imgur.com/…png" }))),
+        el("label", { class: "chk" }, stock, "In stock (only used when stock is empty)"),
         el("div", { class: "actions" },
           el("button", { class: "btn ghost", onclick: () => { if (i > 0) { [list[i - 1], list[i]] = [list[i], list[i - 1]]; draw(); } } }, "↑"),
           el("button", { class: "btn ghost", onclick: () => { if (i < list.length - 1) { [list[i + 1], list[i]] = [list[i], list[i + 1]]; draw(); } } }, "↓"),
-          el("button", { class: "btn bad", onclick: () => { list.splice(i, 1); draw(); } }, "Löschen")
+          el("button", { class: "btn bad", onclick: () => { list.splice(i, 1); draw(); } }, "Delete")
         )
       ));
     });
-    if (!list.length) holder.append(el("p", { class: "hint" }, "Noch keine Produkte."));
+    if (!list.length) holder.append(el("p", { class: "hint" }, "No products yet."));
   };
   draw();
   v.append(el("div", { class: "card" },
-    el("h2", {}, "Produkte (max. 25)"),
-    el("p", { class: "hint" }, "Bilder: lade sie z. B. in einen Discord-Kanal hoch und kopiere den Bild-Link, oder nutze imgur. Danach unter „Shop & Kanäle“ den Katalog neu posten."),
+    el("h2", {}, "Products (max. 25)"),
+    el("p", { class: "hint" }, "Images: upload them to a Discord channel (copy the image link) or use imgur. Then post the catalog again under “Shop & channels”. Stock goes down automatically when a seller confirms a sale."),
     holder,
     el("div", { class: "actions" },
-      el("button", { class: "btn ghost", onclick: () => { if (list.length < 25) { list.push({ name: "Neues Produkt", price: "", inStock: true }); draw(); } } }, "➕ Produkt hinzufügen"),
-      el("button", { class: "btn", onclick: () => run(async () => { G.products = await api(`/guild/${guildId}/products`, "PUT", { products: list }); list = G.products.map(p => ({ ...p })); draw(); }, "✅ Produkte gespeichert") }, "Speichern")
+      el("button", { class: "btn ghost", onclick: () => { if (list.length < 25) { list.push({ name: "New product", price: "", inStock: true }); draw(); } } }, "➕ Add product"),
+      el("button", { class: "btn", onclick: () => run(async () => { G.products = await api(`/guild/${guildId}/products`, "PUT", { products: list }); list = G.products.map(p => ({ ...p })); draw(); }, "✅ Products saved") }, "Save")
     )
   ));
 }
@@ -243,44 +244,45 @@ function renderPayments(v) {
           field("Name", bind("label", el("input", { value: m.label || "" }))),
           field("Emoji", bind("emoji", el("input", { value: m.emoji || "" })))
         ),
-        field("Anleitung für den Kunden (IBAN, LTC-Adresse, …)", bind("instructions", el("textarea", {}, m.instructions || ""))),
-        el("label", { class: "chk" }, en, "Aktiv (im Ticket auswählbar)"),
-        el("label", { class: "chk" }, code, "Kunde kann einen Code senden (Button „Code senden“, z. B. Paysafe)"),
-        el("div", { class: "actions" }, el("button", { class: "btn bad", onclick: () => { list.splice(i, 1); draw(); } }, "Löschen"))
+        field("Instructions for the customer (IBAN, LTC address, …)", bind("instructions", el("textarea", {}, m.instructions || ""))),
+        el("label", { class: "chk" }, en, "Enabled (selectable in tickets)"),
+        el("label", { class: "chk" }, code, "Customer can send a code (“Send code” button, e.g. Paysafe)"),
+        el("div", { class: "actions" }, el("button", { class: "btn bad", onclick: () => { list.splice(i, 1); draw(); } }, "Delete"))
       ));
     });
   };
   draw();
   v.append(el("div", { class: "card" },
-    el("h2", {}, "Zahlungsarten"),
-    el("p", { class: "hint" }, "Das sieht der Kunde im Ticket, nachdem er die Zahlungsart gewählt hat. Trage hier deine echten Daten ein."),
+    el("h2", {}, "Payment methods"),
+    el("p", { class: "hint" }, "The customer sees this in the ticket after choosing the payment method. Enter your real details here."),
     holder,
     el("div", { class: "actions" },
-      el("button", { class: "btn ghost", onclick: () => { if (list.length < 25) { list.push({ label: "Neue Zahlungsart", enabled: true, askCode: false, instructions: "" }); draw(); } } }, "➕ Zahlungsart hinzufügen"),
-      el("button", { class: "btn", onclick: () => run(async () => { G.paymentMethods = await api(`/guild/${guildId}/payments`, "PUT", { paymentMethods: list }); list = G.paymentMethods.map(m => ({ ...m })); draw(); }, "✅ Zahlungsarten gespeichert") }, "Speichern")
+      el("button", { class: "btn ghost", onclick: () => { if (list.length < 25) { list.push({ label: "New payment method", enabled: true, askCode: false, instructions: "" }); draw(); } } }, "➕ Add payment method"),
+      el("button", { class: "btn", onclick: () => run(async () => { G.paymentMethods = await api(`/guild/${guildId}/payments`, "PUT", { paymentMethods: list }); list = G.paymentMethods.map(m => ({ ...m })); draw(); }, "✅ Payment methods saved") }, "Save")
     )
   ));
 }
 
 // ---------- Bestellungen ----------
-const STATUS = { open: "offen", awaiting_payment: "wartet auf Zahlung", paid_claimed: "Kunde sagt: bezahlt", code_sent: "Code gesendet", paid: "bezahlt ✅", code_invalid: "Code ungültig", closed: "geschlossen" };
+const STATUS = { open: "open", awaiting_payment: "awaiting payment", paid_claimed: "customer says: paid", code_sent: "code sent", confirmed: "sale confirmed ✅", rejected: "rejected", closed: "closed" };
 function renderOrders(v) {
   const rows = G.orders.map(o => {
     const p = G.products.find(x => x.id === o.productId), m = G.paymentMethods.find(x => x.id === o.methodId);
     return el("tr", {},
-      el("td", {}, new Date(o.createdAt).toLocaleString("de-DE")),
+      el("td", {}, new Date(o.createdAt).toLocaleString("en-GB")),
       el("td", {}, o.userId || "—"),
       el("td", {}, p ? p.name : "—"),
       el("td", {}, m ? m.label : "—"),
       el("td", {}, STATUS[o.status] || o.status),
+      el("td", {}, o.quantity ? String(o.quantity) : ""),
       el("td", {}, o.codeMasked || "")
     );
   });
   v.append(el("div", { class: "card" },
-    el("h2", {}, "Letzte Bestellungen"),
-    el("p", { class: "hint" }, "Aus Sicherheitsgründen steht der volle Code nur im privaten Code-Kanal, hier nur ein Anfang."),
-    rows.length ? el("div", { style: "overflow:auto" }, el("table", {}, el("thead", {}, el("tr", {}, ["Zeit", "Nutzer-ID", "Produkt", "Zahlung", "Status", "Code"].map(h => el("th", {}, h)))), el("tbody", {}, rows))) : el("p", {}, "Noch keine Bestellungen."),
-    el("div", { class: "actions" }, el("button", { class: "btn ghost", onclick: load }, "🔄 Aktualisieren"))
+    el("h2", {}, "Latest orders"),
+    el("p", { class: "hint" }, "For security the full code is only shown in the private code channel; here you only see the beginning."),
+    rows.length ? el("div", { style: "overflow:auto" }, el("table", {}, el("thead", {}, el("tr", {}, ["Time", "User ID", "Product", "Payment", "Status", "Qty", "Code"].map(h => el("th", {}, h)))), el("tbody", {}, rows))) : el("p", {}, "No orders yet."),
+    el("div", { class: "actions" }, el("button", { class: "btn ghost", onclick: load }, "🔄 Refresh"))
   ));
 }
 
@@ -288,27 +290,27 @@ function renderOrders(v) {
 function renderFuncs(v) {
   const welcome = el("textarea", { style: "min-height:120px" }, G.welcomeMessage);
   v.append(el("div", { class: "card" },
-    el("h2", {}, "Ticket-Willkommensnachricht"),
-    el("p", { class: "hint" }, "Wird in neuen Ticket-King-Tickets gesendet. {user} = Erwähnung, {username} = Name. Leer lassen = aus."),
+    el("h2", {}, "Ticket welcome message"),
+    el("p", { class: "hint" }, "Sent in new Ticket King tickets. {user} = mention, {username} = name. Leave empty = off."),
     welcome,
-    el("div", { class: "actions" }, el("button", { class: "btn", onclick: () => run(() => api(`/guild/${guildId}/welcome`, "PUT", { message: welcome.value }), "✅ Gespeichert") }, "Speichern"))
+    el("div", { class: "actions" }, el("button", { class: "btn", onclick: () => run(() => api(`/guild/${guildId}/welcome`, "PUT", { message: welcome.value }), "✅ Saved") }, "Save"))
   ));
 
   const text = el("input", { value: G.bot.activityText });
-  const type = el("select", {}, [[0, "Spielt"], [2, "Hört zu"], [3, "Schaut"], [5, "Tritt an in"]].map(([k, n]) => el("option", { value: k }, n)));
+  const type = el("select", {}, [[0, "Playing"], [2, "Listening to"], [3, "Watching"], [5, "Competing in"]].map(([k, n]) => el("option", { value: k }, n)));
   type.value = String(G.bot.activityType);
   v.append(el("div", { class: "card" },
-    el("h2", {}, "Bot-Status"),
-    el("div", { class: "row" }, field("Aktivität", type), field("Text", text)),
-    el("div", { class: "actions" }, el("button", { class: "btn", onclick: () => run(async () => { G.bot = await api("/bot", "PUT", { activityText: text.value, activityType: type.value }); }, "✅ Status geändert") }, "Speichern"))
+    el("h2", {}, "Bot status"),
+    el("div", { class: "row" }, field("Activity", type), field("Text", text)),
+    el("div", { class: "actions" }, el("button", { class: "btn", onclick: () => run(async () => { G.bot = await api("/bot", "PUT", { activityText: text.value, activityType: type.value }); }, "✅ Status changed") }, "Save"))
   ));
 
   const ch = channelSelect("", false), roles = roleChecks([]);
   v.append(el("div", { class: "card" },
-    el("h2", {}, "Support-Ticket-Panel posten"),
-    el("p", { class: "hint" }, "Wie /ticketpanel: Postet das Panel (Support, Report, …) in einen Kanal deiner Wahl."),
-    field("Kanal", ch), el("label", {}, "Team-Rollen mit Zugriff"), roles,
-    el("div", { class: "actions" }, el("button", { class: "btn", onclick: () => run(() => api(`/guild/${guildId}/post-ticketpanel`, "POST", { channelId: ch.value, roleIds: roles.values() }), "✅ Panel gepostet") }, "Panel posten"))
+    el("h2", {}, "Post support ticket panel"),
+    el("p", { class: "hint" }, "Like /ticketpanel: posts the panel (support, reports, …) in a channel of your choice."),
+    field("Channel", ch), el("label", {}, "Staff roles with access"), roles,
+    el("div", { class: "actions" }, el("button", { class: "btn", onclick: () => run(() => api(`/guild/${guildId}/post-ticketpanel`, "POST", { channelId: ch.value, roleIds: roles.values() }), "✅ Panel posted") }, "Post panel"))
   ));
 }
 

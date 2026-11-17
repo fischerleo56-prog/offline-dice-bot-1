@@ -12,7 +12,7 @@ function loadState() {
         state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
     } catch (error) {
         if (error.code !== "ENOENT") {
-            console.error("❌ Ticket-Willkommensnachrichten konnten nicht geladen werden:", error);
+            console.error("❌ Ticket welcome messages could not be loaded:", error);
         }
 
         state = { guilds: {} };

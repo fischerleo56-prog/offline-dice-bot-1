@@ -15,7 +15,7 @@ const shopStore = require("./shopStore");
 
 const channelsSendingPanel = new Set();
 
-// ---------- Hilfsfunktionen ----------
+// ---------- Helpers ----------
 
 function embedColor(settings) {
     return parseInt(String(settings.color || "#5865f2").replace("#", ""), 16) || 0x5865f2;
@@ -38,16 +38,17 @@ function staffMentions(settings) {
     return settings.staffRoleIds.map(id => `<@&${id}>`).join(" ");
 }
 
-function getEmoji(value) {
-    return value || undefined;
-}
-
 function maskCode(code) {
     const clean = String(code).replace(/\s+/g, "");
-    return clean.length <= 4 ? "****" : `${clean.slice(0, 4)}…(${clean.length} Zeichen)`;
+    return clean.length <= 4 ? "****" : `${clean.slice(0, 4)}… (${clean.length} chars)`;
 }
 
-// ---------- Panel im Ticket ----------
+// The ticket owner, or staff (e.g. the shop owner testing), may use the order buttons.
+function canUseOrder(interaction, order, settings) {
+    return Boolean(order) && (order.userId === interaction.user.id || isStaff(interaction, settings));
+}
+
+// ---------- Panel inside the ticket ----------
 
 function buildPanel(guildConfig, order) {
     const { settings, products, paymentMethods } = guildConfig;
@@ -57,7 +58,7 @@ function buildPanel(guildConfig, order) {
     const embed = new EmbedBuilder()
         .setColor(embedColor(settings))
         .setTitle(settings.panelTitle)
-        .setDescription(settings.panelDescription || "Wähle Produkt und Zahlungsart aus.")
+        .setDescription(settings.panelDescription || "Choose your product and payment method.")
         .setTimestamp();
 
     const components = [];
@@ -66,35 +67,37 @@ function buildPanel(guildConfig, order) {
         components.push(new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
                 .setCustomId("shop:product")
-                .setPlaceholder("1️⃣ Produkt auswählen")
+                .setPlaceholder("1️⃣ Select a product")
                 .addOptions(availableProducts.slice(0, 25).map(product => {
                     const option = new StringSelectMenuOptionBuilder()
                         .setLabel([product.name, product.price].filter(Boolean).join(" – ").slice(0, 100))
                         .setValue(product.id)
                         .setDefault(order?.productId === product.id);
                     if (product.description) option.setDescription(product.description.replace(/\s+/g, " ").slice(0, 100));
-                    if (getEmoji(product.emoji)) option.setEmoji(product.emoji);
+                    if (product.emoji) option.setEmoji(product.emoji);
                     return option;
                 }))
         ));
+    } else if (products.length) {
+        embed.addFields({ name: "Sold out", value: "All products are currently out of stock." });
     }
 
     if (methods.length) {
         components.push(new ActionRowBuilder().addComponents(
             new StringSelectMenuBuilder()
                 .setCustomId("shop:pay")
-                .setPlaceholder(`${availableProducts.length ? "2️⃣" : "1️⃣"} Zahlungsart auswählen`)
+                .setPlaceholder(`${availableProducts.length ? "2️⃣" : "1️⃣"} Select a payment method`)
                 .addOptions(methods.slice(0, 25).map(method => {
                     const option = new StringSelectMenuOptionBuilder()
                         .setLabel(method.label.slice(0, 100))
                         .setValue(method.id)
                         .setDefault(order?.methodId === method.id);
-                    if (getEmoji(method.emoji)) option.setEmoji(method.emoji);
+                    if (method.emoji) option.setEmoji(method.emoji);
                     return option;
                 }))
         ));
     } else {
-        embed.addFields({ name: "⚠️ Keine Zahlungsart", value: "Es ist noch keine Zahlungsart aktiviert. Bitte warte auf das Team." });
+        embed.addFields({ name: "⚠️ No payment method", value: "No payment method is enabled yet. Please wait for the team." });
     }
 
     return { embeds: [embed], components };
@@ -107,23 +110,23 @@ function buildSummary(guildConfig, order) {
 
     const embed = new EmbedBuilder()
         .setColor(embedColor(settings))
-        .setTitle("✅ Deine Bestellung")
+        .setTitle("✅ Your order")
         .addFields(
-            { name: "Produkt", value: product ? product.name : "—", inline: true },
-            { name: "Preis", value: product?.price || "—", inline: true },
-            { name: "Zahlungsart", value: method ? `${method.emoji ? `${method.emoji} ` : ""}${method.label}` : "—", inline: true }
+            { name: "Product", value: product ? product.name : "—", inline: true },
+            { name: "Price", value: product?.price || "—", inline: true },
+            { name: "Payment method", value: method ? `${method.emoji ? `${method.emoji} ` : ""}${method.label}` : "—", inline: true }
         )
-        .setDescription(method?.instructions || "Das Team meldet sich gleich bei dir.")
-        .setFooter({ text: "Wenn du bezahlt hast, klicke auf „Ich habe bezahlt“." })
+        .setDescription(method?.instructions || "The team will contact you shortly.")
+        .setFooter({ text: "When you have paid, click “I have paid”." })
         .setTimestamp();
     if (product?.imageUrl) embed.setThumbnail(product.imageUrl);
 
     const buttons = [
-        new ButtonBuilder().setCustomId("shop:paid").setLabel("Ich habe bezahlt").setEmoji("✅").setStyle(ButtonStyle.Success)
+        new ButtonBuilder().setCustomId("shop:paid").setLabel("I have paid").setEmoji("✅").setStyle(ButtonStyle.Success)
     ];
     if (method?.askCode) {
         buttons.unshift(
-            new ButtonBuilder().setCustomId("shop:code").setLabel("Code senden").setEmoji("🔑").setStyle(ButtonStyle.Primary)
+            new ButtonBuilder().setCustomId("shop:code").setLabel("Send code").setEmoji("🔑").setStyle(ButtonStyle.Primary)
         );
     }
     return { embeds: [embed], components: [new ActionRowBuilder().addComponents(buttons)] };
@@ -153,14 +156,14 @@ async function sendPanel(channel) {
     }
 }
 
-// Ticket King legt den Kanal an und setzt danach die Rechte – deshalb ein paar Versuche.
+// Ticket King creates the channel first and sets permissions afterwards, so retry a few times.
 async function sendPanelWithRetry(channel, attempts = 5) {
     for (let attempt = 1; attempt <= attempts; attempt++) {
         try {
             return await sendPanel(channel);
         } catch (error) {
             if (attempt === attempts) {
-                console.error(`❌ Shop-Panel in ${channel.id} konnte nicht gesendet werden:`, error.message);
+                console.error(`❌ Shop panel could not be sent in ${channel.id}:`, error.message);
                 return false;
             }
             await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
@@ -177,42 +180,40 @@ async function refreshSummary(channel, guildConfig, order) {
             await existing.edit(payload);
             return order;
         } catch (error) {
-            // Nachricht gelöscht – neue senden
+            // message deleted – send a new one
         }
     }
     const sent = await channel.send(payload);
     return { ...order, summaryMessageId: sent.id };
 }
 
-// ---------- Interaktionen ----------
+// ---------- Interactions ----------
 
 async function handleSelect(interaction, kind) {
     const guildConfig = shopStore.getGuild(interaction.guildId);
     const { settings } = guildConfig;
     const order = shopStore.getOrder(interaction.guildId, interaction.channelId);
     if (!order) {
-        return interaction.reply({ content: "❌ Diese Bestellung ist nicht mehr aktiv. Bitte öffne ein neues Ticket.", ephemeral: true });
+        return interaction.reply({ content: "❌ This order is no longer active. Please open a new ticket.", ephemeral: true });
+    }
+    if (order.userId && order.userId !== interaction.user.id && !isStaff(interaction, settings)) {
+        return interaction.reply({ content: "This is not your order.", ephemeral: true });
     }
 
-    const staff = isStaff(interaction, settings);
-    if (order.userId && order.userId !== interaction.user.id && !staff) {
-        return interaction.reply({ content: "Das ist nicht deine Bestellung.", ephemeral: true });
-    }
-
-    const next = { ...order, userId: order.userId || (staff ? null : interaction.user.id) };
+    const next = { ...order, userId: order.userId || interaction.user.id };
     const value = interaction.values[0];
     let confirmation;
 
     if (kind === "product") {
         const product = guildConfig.products.find(item => item.id === value && item.inStock);
-        if (!product) return interaction.reply({ content: "❌ Dieses Produkt ist nicht verfügbar.", ephemeral: true });
+        if (!product) return interaction.reply({ content: "❌ This product is not available.", ephemeral: true });
         next.productId = product.id;
-        confirmation = `Produkt gewählt: **${product.name}**`;
+        confirmation = `Product selected: **${product.name}**`;
     } else {
         const method = guildConfig.paymentMethods.find(item => item.id === value && item.enabled);
-        if (!method) return interaction.reply({ content: "❌ Diese Zahlungsart ist nicht verfügbar.", ephemeral: true });
+        if (!method) return interaction.reply({ content: "❌ This payment method is not available.", ephemeral: true });
         next.methodId = method.id;
-        confirmation = `Zahlungsart gewählt: **${method.label}**`;
+        confirmation = `Payment method selected: **${method.label}**`;
     }
 
     const needsProduct = guildConfig.products.some(item => item.inStock);
@@ -225,45 +226,53 @@ async function handleSelect(interaction, kind) {
     }
     shopStore.saveOrder(interaction.guildId, interaction.channelId, saved);
 
-    // Auswahl im Panel merken (Standardwert), damit man sieht, was gewählt ist
     try {
         await interaction.message.edit(buildPanel(guildConfig, saved));
     } catch (error) {
-        console.warn("Shop-Panel konnte nicht aktualisiert werden:", error.message);
+        console.warn("Shop panel could not be updated:", error.message);
     }
     if (!ready) {
-        await interaction.followUp({ content: `✅ ${confirmation}. Wähle noch den anderen Punkt aus.`, ephemeral: true });
+        await interaction.followUp({ content: `✅ ${confirmation}. Please select the other option too.`, ephemeral: true });
     }
+}
+
+function saleButtons(ticketChannelId, confirmLabel = "Confirm sale") {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`shop:sale:${ticketChannelId}`).setLabel(confirmLabel).setEmoji("✅").setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`shop:reject:${ticketChannelId}`).setLabel("Reject").setEmoji("❌").setStyle(ButtonStyle.Danger)
+    );
 }
 
 async function handlePaid(interaction) {
     const guildConfig = shopStore.getGuild(interaction.guildId);
     const order = shopStore.getOrder(interaction.guildId, interaction.channelId);
-    if (!order || order.userId !== interaction.user.id) {
-        return interaction.reply({ content: "Nur der Besteller kann das auslösen.", ephemeral: true });
+    if (!canUseOrder(interaction, order, guildConfig.settings)) {
+        return interaction.reply({ content: "Only the buyer can do this.", ephemeral: true });
     }
-    shopStore.saveOrder(interaction.guildId, interaction.channelId, { ...order, status: "paid_claimed" });
-    const mentions = staffMentions(guildConfig.settings);
+    const buyerId = order.userId || interaction.user.id;
+    shopStore.saveOrder(interaction.guildId, interaction.channelId, { ...order, userId: buyerId, status: "paid_claimed" });
     await interaction.reply({
-        content: `💸 <@${interaction.user.id}> hat bezahlt. ${mentions} bitte prüfen.`.trim(),
-        allowedMentions: { users: [interaction.user.id], roles: guildConfig.settings.staffRoleIds }
+        content: `💸 <@${buyerId}> says they have paid. ${staffMentions(guildConfig.settings)} please check and confirm the sale.`.trim(),
+        components: [saleButtons(interaction.channelId)],
+        allowedMentions: { users: [buyerId], roles: guildConfig.settings.staffRoleIds }
     });
 }
 
 async function handleCodeButton(interaction) {
+    const settings = shopStore.getGuild(interaction.guildId).settings;
     const order = shopStore.getOrder(interaction.guildId, interaction.channelId);
-    if (!order || order.userId !== interaction.user.id) {
-        return interaction.reply({ content: "Nur der Besteller kann einen Code senden.", ephemeral: true });
+    if (!canUseOrder(interaction, order, settings)) {
+        return interaction.reply({ content: "Only the buyer can send a code.", ephemeral: true });
     }
     const modal = new ModalBuilder()
         .setCustomId("shop:codemodal")
-        .setTitle("Code senden")
+        .setTitle("Send code")
         .addComponents(
             new ActionRowBuilder().addComponents(
                 new TextInputBuilder()
                     .setCustomId("code")
-                    .setLabel("Dein Code")
-                    .setPlaceholder("Code hier einfügen")
+                    .setLabel("Your code")
+                    .setPlaceholder("Paste your code here")
                     .setStyle(TextInputStyle.Short)
                     .setMinLength(4)
                     .setMaxLength(100)
@@ -272,7 +281,7 @@ async function handleCodeButton(interaction) {
             new ActionRowBuilder().addComponents(
                 new TextInputBuilder()
                     .setCustomId("note")
-                    .setLabel("Notiz / Betrag (optional)")
+                    .setLabel("Note / amount (optional)")
                     .setStyle(TextInputStyle.Short)
                     .setMaxLength(100)
                     .setRequired(false)
@@ -285,10 +294,11 @@ async function handleCodeModal(interaction) {
     const guildConfig = shopStore.getGuild(interaction.guildId);
     const { settings, products, paymentMethods } = guildConfig;
     const order = shopStore.getOrder(interaction.guildId, interaction.channelId);
-    if (!order || order.userId !== interaction.user.id) {
-        return interaction.reply({ content: "❌ Keine aktive Bestellung gefunden.", ephemeral: true });
+    if (!canUseOrder(interaction, order, settings)) {
+        return interaction.reply({ content: "❌ No active order found.", ephemeral: true });
     }
 
+    const buyerId = order.userId || interaction.user.id;
     const code = interaction.fields.getTextInputValue("code").trim();
     const note = interaction.fields.getTextInputValue("note")?.trim();
     const product = products.find(item => item.id === order.productId);
@@ -298,25 +308,21 @@ async function handleCodeModal(interaction) {
 
     const embed = new EmbedBuilder()
         .setColor(0xfee75c)
-        .setTitle("🔑 Neuer Code")
+        .setTitle("🔑 New code")
         .addFields(
-            { name: "Kunde", value: `<@${interaction.user.id}> (${interaction.user.tag})`, inline: true },
+            { name: "Customer", value: `<@${buyerId}>`, inline: true },
             { name: "Ticket", value: `<#${interaction.channelId}>`, inline: true },
-            { name: "Zahlungsart", value: method?.label || "—", inline: true },
-            { name: "Produkt", value: product ? `${product.name}${product.price ? ` – ${product.price}` : ""}` : "—" },
+            { name: "Payment method", value: method?.label || "—", inline: true },
+            { name: "Product", value: product ? `${product.name}${product.price ? ` – ${product.price}` : ""}` : "—" },
             { name: "Code", value: `\`\`\`${code.replace(/`/g, "'")}\`\`\`` }
         )
         .setTimestamp();
-    if (note) embed.addFields({ name: "Notiz", value: note.slice(0, 200) });
+    if (note) embed.addFields({ name: "Note", value: note.slice(0, 200) });
 
-    const buttons = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`shop:cok:${interaction.channelId}`).setLabel("Gültig / Bestätigt").setEmoji("✅").setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`shop:cbad:${interaction.channelId}`).setLabel("Ungültig").setEmoji("❌").setStyle(ButtonStyle.Danger)
-    );
     const payload = {
         content: staffMentions(settings) || undefined,
         embeds: [embed],
-        components: [buttons],
+        components: [saleButtons(interaction.channelId, "Valid – confirm sale")],
         allowedMentions: { roles: settings.staffRoleIds }
     };
 
@@ -325,66 +331,164 @@ async function handleCodeModal(interaction) {
         const codeChannel = settings.codeChannelId
             ? await interaction.guild.channels.fetch(settings.codeChannelId)
             : null;
-        if (!codeChannel?.isTextBased()) throw new Error("Kein Code-Kanal eingestellt");
+        if (!codeChannel?.isTextBased()) throw new Error("No code channel set");
         await codeChannel.send(payload);
     } catch (error) {
-        console.warn("Code-Kanal nicht erreichbar, sende ins Ticket:", error.message);
+        console.warn("Code channel unreachable, sending into the ticket:", error.message);
         delivered = "ticket";
         await interaction.channel.send(payload);
     }
 
     shopStore.saveOrder(interaction.guildId, interaction.channelId, {
         ...order,
+        userId: buyerId,
         status: "code_sent",
         codeMasked: maskCode(code)
     });
 
     await interaction.channel.send({
-        content: `🔑 <@${interaction.user.id}> hat einen Code gesendet. Das Team prüft ihn jetzt.`,
-        allowedMentions: { users: [interaction.user.id] }
+        content: `🔑 <@${buyerId}> sent a code. The team is checking it now.`,
+        allowedMentions: { users: [buyerId] }
     });
     await interaction.editReply(
         delivered === "private"
-            ? "✅ Dein Code wurde sicher an das Team gesendet."
-            : "✅ Dein Code wurde an das Team gesendet (im Ticket, da noch kein privater Code-Kanal eingestellt ist)."
+            ? "✅ Your code was sent securely to the team."
+            : "✅ Your code was sent to the team (in this ticket, because no private code channel is set yet)."
     );
 }
 
-async function handleCodeDecision(interaction) {
-    const [, action, ticketChannelId] = interaction.customId.split(":");
+// Seller clicks "Confirm sale" -> asks how many items were sold
+async function handleSaleButton(interaction) {
+    const ticketChannelId = interaction.customId.split(":")[2];
     const settings = shopStore.getGuild(interaction.guildId).settings;
     if (!isStaff(interaction, settings)) {
-        return interaction.reply({ content: "Nur das Team darf das.", ephemeral: true });
+        return interaction.reply({ content: "Only the team can confirm sales.", ephemeral: true });
     }
-
-    const approved = action === "cok";
     const order = shopStore.getOrder(interaction.guildId, ticketChannelId);
-    if (order) {
-        shopStore.saveOrder(interaction.guildId, ticketChannelId, { ...order, status: approved ? "paid" : "code_invalid" });
+    if (!order) return interaction.reply({ content: "❌ Order not found.", ephemeral: true });
+    if (order.status === "confirmed") {
+        return interaction.reply({ content: "This sale was already confirmed.", ephemeral: true });
     }
 
-    const embed = EmbedBuilder.from(interaction.message.embeds[0])
-        .setColor(approved ? 0x57f287 : 0xed4245)
-        .setFooter({ text: `${approved ? "Bestätigt" : "Als ungültig markiert"} von ${interaction.user.tag}` });
-    await interaction.update({ embeds: [embed], components: [] });
+    const modal = new ModalBuilder()
+        .setCustomId(`shop:salemodal:${ticketChannelId}`)
+        .setTitle("Confirm sale")
+        .addComponents(
+            new ActionRowBuilder().addComponents(
+                new TextInputBuilder()
+                    .setCustomId("quantity")
+                    .setLabel("How many were sold? (removed from stock)")
+                    .setStyle(TextInputStyle.Short)
+                    .setValue("1")
+                    .setMinLength(1)
+                    .setMaxLength(6)
+                    .setRequired(true)
+            )
+        );
+    return interaction.showModal(modal);
+}
+
+async function handleSaleModal(interaction) {
+    const ticketChannelId = interaction.customId.split(":")[2];
+    const guildConfig = shopStore.getGuild(interaction.guildId);
+    if (!isStaff(interaction, guildConfig.settings)) {
+        return interaction.reply({ content: "Only the team can confirm sales.", ephemeral: true });
+    }
+    const quantity = Number.parseInt(interaction.fields.getTextInputValue("quantity").trim(), 10);
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 100000) {
+        return interaction.reply({ content: "❌ Please enter a whole number of 1 or more.", ephemeral: true });
+    }
+    const order = shopStore.getOrder(interaction.guildId, ticketChannelId);
+    if (!order) return interaction.reply({ content: "❌ Order not found.", ephemeral: true });
+    if (order.status === "confirmed") {
+        return interaction.reply({ content: "This sale was already confirmed.", ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    let stockText = "no product selected";
+    let productName = null;
+    if (order.productId) {
+        const result = shopStore.adjustStock(interaction.guildId, order.productId, -quantity);
+        if (result) {
+            productName = result.product.name;
+            stockText = result.stock === null
+                ? "stock is not tracked (unlimited)"
+                : `stock of **${result.product.name}** is now **${result.stock}**`;
+        }
+    }
+    shopStore.saveOrder(interaction.guildId, ticketChannelId, {
+        ...order,
+        status: "confirmed",
+        quantity,
+        confirmedBy: interaction.user.id
+    });
+
+    // disable the buttons on the message the seller clicked
+    if (interaction.message) {
+        const base = interaction.message.embeds[0]
+            ? EmbedBuilder.from(interaction.message.embeds[0]).setColor(0x57f287).setFooter({ text: `Sale confirmed by ${interaction.user.tag} (x${quantity})` })
+            : null;
+        await interaction.message.edit({
+            ...(base ? { embeds: [base] } : { content: `✅ Sale confirmed by ${interaction.user.tag} (x${quantity})` }),
+            components: []
+        }).catch(() => {});
+    }
 
     try {
         const ticket = await interaction.guild.channels.fetch(ticketChannelId);
-        const userId = order?.userId;
         await ticket.send({
-            content: approved
-                ? `✅ ${userId ? `<@${userId}> ` : ""}Dein Code wurde bestätigt. Danke für deine Zahlung!`
-                : `❌ ${userId ? `<@${userId}> ` : ""}Dein Code war ungültig. Bitte sende einen neuen Code über **Code senden** oder wähle eine andere Zahlungsart.`,
-            allowedMentions: { users: userId ? [userId] : [] }
+            content: `✅ ${order.userId ? `<@${order.userId}> ` : ""}Your payment was confirmed${productName ? ` for **${productName}**` : ""}. Thank you!`,
+            allowedMentions: { users: order.userId ? [order.userId] : [] }
         });
     } catch (error) {
-        await interaction.followUp({ content: "⚠️ Das Ticket konnte nicht benachrichtigt werden (evtl. schon gelöscht).", ephemeral: true });
+        // ticket already deleted
+    }
+
+    // keep the shop catalog in sync
+    if (guildConfig.settings.shopChannelId) {
+        postCatalog(interaction.client, interaction.guildId).catch(error =>
+            console.warn("Catalog could not be updated:", error.message));
+    }
+
+    await interaction.editReply(`✅ Sale confirmed (x${quantity}); ${stockText}.`);
+}
+
+async function handleReject(interaction) {
+    const ticketChannelId = interaction.customId.split(":")[2];
+    const settings = shopStore.getGuild(interaction.guildId).settings;
+    if (!isStaff(interaction, settings)) {
+        return interaction.reply({ content: "Only the team can do this.", ephemeral: true });
+    }
+    const order = shopStore.getOrder(interaction.guildId, ticketChannelId);
+    if (order && order.status !== "confirmed") {
+        shopStore.saveOrder(interaction.guildId, ticketChannelId, { ...order, status: "rejected" });
+    }
+
+    const footer = { text: `Rejected by ${interaction.user.tag}` };
+    if (interaction.message.embeds[0]) {
+        await interaction.update({
+            embeds: [EmbedBuilder.from(interaction.message.embeds[0]).setColor(0xed4245).setFooter(footer)],
+            components: []
+        });
+    } else {
+        await interaction.update({ content: `❌ Rejected by ${interaction.user.tag}`, components: [] });
+    }
+
+    try {
+        const ticket = await interaction.guild.channels.fetch(ticketChannelId);
+        await ticket.send({
+            content: `❌ ${order?.userId ? `<@${order.userId}> ` : ""}We could not confirm your payment or code. Please send a new code or choose another payment method.`,
+            allowedMentions: { users: order?.userId ? [order.userId] : [] }
+        });
+    } catch (error) {
+        await interaction.followUp({ content: "⚠️ The ticket could not be notified (maybe already deleted).", ephemeral: true });
     }
 }
 
 async function handleInteraction(interaction) {
     if (!interaction.guildId) {
-        return interaction.reply({ content: "Nur auf einem Server möglich.", ephemeral: true });
+        return interaction.reply({ content: "This only works on a server.", ephemeral: true });
     }
     const id = interaction.customId;
 
@@ -395,35 +499,19 @@ async function handleInteraction(interaction) {
     if (interaction.isButton()) {
         if (id === "shop:paid") return handlePaid(interaction);
         if (id === "shop:code") return handleCodeButton(interaction);
-        if (id.startsWith("shop:cok:") || id.startsWith("shop:cbad:")) return handleCodeDecision(interaction);
+        if (id.startsWith("shop:sale:")) return handleSaleButton(interaction);
+        if (id.startsWith("shop:reject:")) return handleReject(interaction);
     }
-    if (interaction.isModalSubmit() && id === "shop:codemodal") return handleCodeModal(interaction);
+    if (interaction.isModalSubmit()) {
+        if (id === "shop:codemodal") return handleCodeModal(interaction);
+        if (id.startsWith("shop:salemodal:")) return handleSaleModal(interaction);
+    }
 }
 
-// ---------- Katalog im Shop-Kanal ----------
+// ---------- Catalog in the shop channel ----------
 
-async function postCatalog(client, guildId) {
-    const guild = await client.guilds.fetch(guildId);
-    const guildConfig = shopStore.getGuild(guildId);
+function buildCatalogMessages(guildConfig) {
     const { settings, products } = guildConfig;
-    if (!settings.shopChannelId) throw new Error("Kein Shop-Kanal eingestellt.");
-
-    const channel = await guild.channels.fetch(settings.shopChannelId);
-    if (!channel?.isTextBased()) throw new Error("Der Shop-Kanal ist kein Textkanal.");
-
-    // alte Katalog-Nachrichten entfernen
-    const previous = guildConfig.shopMessages;
-    if (previous?.channelId) {
-        try {
-            const oldChannel = await guild.channels.fetch(previous.channelId);
-            for (const messageId of previous.messageIds) {
-                await oldChannel.messages.delete(messageId).catch(() => {});
-            }
-        } catch (error) {
-            // Kanal weg – egal
-        }
-    }
-
     const color = embedColor(settings);
     const header = new EmbedBuilder()
         .setColor(color)
@@ -433,21 +521,63 @@ async function postCatalog(client, guildId) {
     const productEmbeds = products.map(product => {
         const embed = new EmbedBuilder()
             .setColor(product.inStock ? color : 0x747f8d)
-            .setTitle(`${product.emoji ? `${product.emoji} ` : ""}${product.name}${product.inStock ? "" : " (ausverkauft)"}`)
+            .setTitle(`${product.emoji ? `${product.emoji} ` : ""}${product.name}${product.inStock ? "" : " (sold out)"}`)
             .setDescription(product.description || null);
-        if (product.price) embed.addFields({ name: "Preis", value: product.price, inline: true });
+        if (product.price) embed.addFields({ name: "Price", value: product.price, inline: true });
+        if (typeof product.stock === "number") embed.addFields({ name: "In stock", value: String(product.stock), inline: true });
         if (product.imageUrl) embed.setImage(product.imageUrl);
         return embed;
     });
 
     const embeds = [header, ...productEmbeds];
+    const chunks = [];
+    for (let index = 0; index < embeds.length; index += 10) chunks.push(embeds.slice(index, index + 10));
+    return chunks;
+}
+
+async function postCatalog(client, guildId) {
+    const guild = await client.guilds.fetch(guildId);
+    const guildConfig = shopStore.getGuild(guildId);
+    const { settings, products } = guildConfig;
+    if (!settings.shopChannelId) throw new Error("No shop channel is set.");
+
+    const channel = await guild.channels.fetch(settings.shopChannelId);
+    if (!channel?.isTextBased()) throw new Error("The shop channel is not a text channel.");
+
+    const chunks = buildCatalogMessages(guildConfig);
+    const previous = guildConfig.shopMessages;
+
+    // Try to edit the existing catalog messages in place (no spam when stock changes)
+    if (previous?.channelId === channel.id && previous.messageIds.length === chunks.length) {
+        try {
+            for (const [index, messageId] of previous.messageIds.entries()) {
+                const message = await channel.messages.fetch(messageId);
+                await message.edit({ embeds: chunks[index] });
+            }
+            return { channelId: channel.id, products: products.length, edited: true };
+        } catch (error) {
+            // fall through and repost
+        }
+    }
+
+    if (previous?.channelId) {
+        try {
+            const oldChannel = await guild.channels.fetch(previous.channelId);
+            for (const messageId of previous.messageIds) {
+                await oldChannel.messages.delete(messageId).catch(() => {});
+            }
+        } catch (error) {
+            // channel gone – ignore
+        }
+    }
+
     const messageIds = [];
-    for (let index = 0; index < embeds.length; index += 10) {
-        const message = await channel.send({ embeds: embeds.slice(index, index + 10) });
+    for (const chunk of chunks) {
+        const message = await channel.send({ embeds: chunk });
         messageIds.push(message.id);
     }
     shopStore.setShopMessages(guildId, channel.id, messageIds);
-    return { channelId: channel.id, products: products.length };
+    return { channelId: channel.id, products: products.length, edited: false };
 }
 
 module.exports = {

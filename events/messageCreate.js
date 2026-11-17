@@ -20,7 +20,7 @@ async function getTicketInfo(channel, knownTicketKingMessage = null) {
         try {
             messages = [...(await channel.messages.fetch({ limit: 50 })).values()];
         } catch (error) {
-            console.error(`❌ Ticket-King-Ticket in Kanal ${channel.id} konnte nicht erkannt werden:`, error);
+            console.error(`❌ Could not detect Ticket King ticket in channel ${channel.id}:`, error);
             return cached || { isTicket: false, kind: null };
         }
     }
@@ -65,7 +65,7 @@ async function sendApplicationPanel(channel, guildId, kind) {
             applicationPanelMessageId: panel.id
         });
     } catch (error) {
-        console.error(`❌ Bewerbungspanel für Ticket ${channel.id} konnte nicht gesendet werden:`, error);
+        console.error(`❌ Application panel for ticket ${channel.id} could not be sent:`, error);
     } finally {
         channelsSendingApplicationPanel.delete(channel.id);
     }
@@ -93,7 +93,7 @@ async function sendWelcomeMessage(message, config) {
 
         ticketWelcome.markWelcomedChannel(message.guild.id, message.channel.id);
     } catch (error) {
-        console.error(`❌ Willkommensnachricht für Ticket ${message.channel.id} konnte nicht gesendet werden:`, error);
+        console.error(`❌ Welcome message for ticket ${message.channel.id} could not be sent:`, error);
     } finally {
         channelsSendingWelcome.delete(message.channel.id);
     }

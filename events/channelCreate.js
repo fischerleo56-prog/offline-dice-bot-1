@@ -8,7 +8,7 @@ module.exports = {
         if (!channel.guildId) return;
         // Panel nur in Kanälen, deren Name das Ticket-Stichwort enthält (z. B. "228-buy-ticket")
         await shopTickets.sendPanelWithRetry(channel).catch(error => {
-            console.error("❌ Shop-Panel Fehler:", error);
+            console.error("❌ Shop panel error:", error);
         });
     }
 };

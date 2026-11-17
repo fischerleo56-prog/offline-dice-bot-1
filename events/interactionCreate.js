@@ -182,7 +182,7 @@ async function handleTicketButton(interaction) {
                 SendMessages: false
             });
         } catch (error) {
-            console.error(`❌ Ticket ${interaction.channelId} konnte nicht geschlossen werden:`, error);
+            console.error(`❌ Ticket ${interaction.channelId} could not be closed:`, error);
             return interaction.followUp({
                 content: "The ticket could not be closed. Check that the bot can read the channel and manage its permissions.",
                 ephemeral: true
@@ -217,7 +217,7 @@ async function handleTicketButton(interaction) {
                 SendMessages: snapshot.sendMessages ?? null
             });
         } catch (error) {
-            console.error(`❌ Ticket ${interaction.channelId} konnte nicht wieder geöffnet werden:`, error);
+            console.error(`❌ Ticket ${interaction.channelId} could not be reopened:`, error);
             return interaction.reply({
                 content: "The ticket could not be reopened. Check that the bot can manage channel permissions.",
                 ephemeral: true
@@ -321,7 +321,7 @@ async function handleTicketModal(interaction) {
                 components: []
             });
         } catch (error) {
-            console.warn(`⚠️ Alte Bewerbungsnachricht ${application.reviewMessageId} konnte nicht aktualisiert werden:`, error.message);
+            console.warn(`⚠️ Old application message ${application.reviewMessageId} could not be updated:`, error.message);
         }
     }
 

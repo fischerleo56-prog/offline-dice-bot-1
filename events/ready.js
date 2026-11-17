@@ -8,20 +8,20 @@ module.exports = {
 
     async execute(client) {
         console.log(`✅ ${client.user.tag} is online!`);
-        botSettings.apply(client); // Status-Text ist im Dashboard änderbar
+        botSettings.apply(client); // status text can be changed in the dashboard
 
         try {
             const applicationId = client.application?.id || process.env.CLIENT_ID;
             const commands = [...client.commands.values()];
-            console.log(`🔄 Registriere ${commands.length} globale Slash-Befehle: ${commands.map(command => `/${command.data.name}`).join(", ")}`);
+            console.log(`🔄 Registering ${commands.length} global slash commands: ${commands.map(command => `/${command.data.name}`).join(", ")}`);
             const commandCount = await registerCommands(
                 commands,
                 applicationId,
                 process.env.TOKEN
             );
-            console.log(`✅ ${commandCount} globale Slash-Befehle registriert.`);
+            console.log(`✅ ${commandCount} global slash commands registered.`);
         } catch (error) {
-            console.error("❌ Slash-Befehle konnten nicht registriert werden:", error);
+            console.error("❌ Slash commands could not be registered:", error);
         }
     }
 };

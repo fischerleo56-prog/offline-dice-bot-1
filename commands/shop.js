@@ -1,36 +1,36 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
 const shopTickets = require("../utils/shopTickets");
+const shopStore = require("../utils/shopStore");
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName("shop")
-        .setDescription("Shop-Verwaltung (Produkte & Zahlungsarten stellst du im Web-Dashboard ein).")
+        .setDescription("Shop management (products and payment methods are set in the web dashboard).")
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .addSubcommand(sub => sub
-            .setName("katalog")
-            .setDescription("Postet/aktualisiert den Produktkatalog im Shop-Kanal."))
+            .setName("catalog")
+            .setDescription("Posts / updates the product catalog in the shop channel."))
         .addSubcommand(sub => sub
-            .setName("einstellen")
-            .setDescription("Setzt Shop-Kanal und privaten Code-Kanal.")
+            .setName("setup")
+            .setDescription("Sets the shop channel and the private code channel.")
             .addChannelOption(option => option
-                .setName("shop_kanal")
-                .setDescription("Kanal, in dem der Katalog angezeigt wird")
+                .setName("shop_channel")
+                .setDescription("Channel where the catalog is shown")
                 .setRequired(false))
             .addChannelOption(option => option
-                .setName("code_kanal")
-                .setDescription("Privater Kanal, in den Codes gesendet werden")
+                .setName("code_channel")
+                .setDescription("Private channel where submitted codes are sent")
                 .setRequired(false))),
 
     async execute(interaction) {
         if (!interaction.guildId) {
-            return interaction.reply({ content: "Nur auf einem Server möglich.", ephemeral: true });
+            return interaction.reply({ content: "This only works on a server.", ephemeral: true });
         }
         const sub = interaction.options.getSubcommand();
-        const shopStore = require("../utils/shopStore");
 
-        if (sub === "einstellen") {
-            const shop = interaction.options.getChannel("shop_kanal");
-            const code = interaction.options.getChannel("code_kanal");
+        if (sub === "setup") {
+            const shop = interaction.options.getChannel("shop_channel");
+            const code = interaction.options.getChannel("code_channel");
             const guild = shopStore.getGuild(interaction.guildId);
             shopStore.setSettings(interaction.guildId, {
                 ...guild.settings,
@@ -38,7 +38,7 @@ module.exports = {
                 codeChannelId: code?.id ?? guild.settings.codeChannelId
             });
             return interaction.reply({
-                content: `✅ Gespeichert.\nShop-Kanal: ${shop ? `<#${shop.id}>` : "unverändert"}\nCode-Kanal: ${code ? `<#${code.id}>` : "unverändert"}`,
+                content: `✅ Saved.\nShop channel: ${shop ? `<#${shop.id}>` : "unchanged"}\nCode channel: ${code ? `<#${code.id}>` : "unchanged"}`,
                 ephemeral: true
             });
         }
@@ -46,7 +46,7 @@ module.exports = {
         await interaction.deferReply({ ephemeral: true });
         try {
             const result = await shopTickets.postCatalog(interaction.client, interaction.guildId);
-            return interaction.editReply(`✅ Katalog mit ${result.products} Produkt(en) in <#${result.channelId}> gepostet.`);
+            return interaction.editReply(`✅ Catalog with ${result.products} product(s) ${result.edited ? "updated" : "posted"} in <#${result.channelId}>.`);
         } catch (error) {
             return interaction.editReply(`❌ ${error.message}`);
         }

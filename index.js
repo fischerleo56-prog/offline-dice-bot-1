@@ -7,7 +7,7 @@ const { Client, Collection, GatewayIntentBits } = require("discord.js");
 const fs = require("fs");
 const path = require("path");
 
-// Webserver für Render
+// Web server (Railway / Render)
 const PORT = process.env.PORT || 3000;
 
 app.get("/", (req, res) => {
@@ -15,7 +15,7 @@ app.get("/", (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(`🌐 Webserver läuft auf Port ${PORT}`);
+    console.log(`🌐 Web server running on port ${PORT}`);
 });
 
 const client = new Client({
@@ -27,12 +27,12 @@ const client = new Client({
     ]
 });
 
-// Web-Dashboard (/dashboard)
+// Web dashboard (/dashboard)
 require("./utils/dashboardServer")(app, client);
 
 client.commands = new Collection();
 
-// Commands laden
+// Load commands
 const commandFiles = fs
     .readdirSync(path.join(__dirname, "commands"))
     .filter(file => file.endsWith(".js"));
@@ -42,7 +42,7 @@ for (const file of commandFiles) {
     client.commands.set(command.data.name, command);
 }
 
-// Events laden
+// Load events
 const eventFiles = fs
     .readdirSync(path.join(__dirname, "events"))
     .filter(file => file.endsWith(".js"));
@@ -58,51 +58,51 @@ for (const file of eventFiles) {
 }
 
 client.on("shardDisconnect", () => {
-    console.log("❌ Discord Gateway getrennt");
+    console.log("❌ Discord gateway disconnected");
 });
 
 client.on("shardReconnecting", () => {
-    console.log("🔄 Discord Gateway verbindet neu...");
+    console.log("🔄 Discord gateway reconnecting...");
 });
 
 client.on("shardResume", () => {
-    console.log("✅ Discord Verbindung wieder hergestellt");
+    console.log("✅ Discord connection restored");
 });
 
 client.on("disconnect", () => {
-    console.log("❌ Discord Verbindung getrennt!");
+    console.log("❌ Discord connection lost!");
 });
 
 client.on("reconnecting", () => {
-    console.log("🔄 Bot versucht neu zu verbinden...");
+    console.log("🔄 Bot is trying to reconnect...");
 });
 
 client.on("error", (error) => {
-    console.error("❌ Discord Fehler:", error);
+    console.error("❌ Discord error:", error);
 });
 
 client.on("invalidated", () => {
-    console.log("❌ Discord Session ungültig");
+    console.log("❌ Discord session invalid");
 });
 
 process.on("uncaughtException", (error) => {
-    console.error("💥 Ungefangener Fehler:", error);
+    console.error("💥 Uncaught exception:", error);
 });
 
 process.on("unhandledRejection", (error) => {
-    console.error("💥 Unbehandelte Promise Ablehnung:", error);
+    console.error("💥 Unhandled promise rejection:", error);
 });
 
 setInterval(() => {
     console.log(
-        `💚 Bot läuft noch | Discord: ${client.user ? client.user.tag : "NICHT VERBUNDEN"}`
+        `💚 Bot is still running | Discord: ${client.user ? client.user.tag : "NOT CONNECTED"}`
     );
 }, 60000);
 
 client.login(process.env.TOKEN)
     .then(() => {
-        console.log("✅ Login erfolgreich");
+        console.log("✅ Login successful");
     })
     .catch((err) => {
-        console.error("❌ Login Fehler:", err);
+        console.error("❌ Login error:", err);
     });

@@ -1,26 +1,20 @@
-# Willkommensnachricht für Ticket King
+# Welcome message for Ticket King
 
-1. Lege deine eigene `.env`-Datei neben `index.js` ab und trage `TOKEN` ein. Die Vorlage steht in `.env.example`.
-2. Installiere die Abhängigkeiten mit `npm install`.
-3. Starte den Bot mit `node index.js`. Beim Start registriert er die Slash-Befehle global. Alternativ kannst du sie mit `node deploy-commands.js` registrieren; dafür muss zusätzlich `CLIENT_ID` in `.env` stehen.
-4. Führe auf deinem Server `/willkommensnachricht` aus und trage bei `nachricht` den gewünschten Text ein, zum Beispiel: `Na ja, aber das weißt du, oder?`. `{user}` erwähnt die Person; `{username}` wird durch ihren Anzeigenamen ersetzt.
+1. Put your own `.env` file next to `index.js` and set `TOKEN`. The template is `env.example`.
+2. Install dependencies with `npm install`.
+3. Start the bot with `node index.js`. On startup it registers the slash commands globally. Alternatively run `node deploy-commands.js` (needs `CLIENT_ID` as well).
+4. On your server run `/welcomemessage` and enter the text in `message`. `{user}` mentions the person; `{username}` is replaced by their display name. You can also edit it in the web dashboard (Features tab).
 
-Der Bot sendet den gespeicherten Text einmal, sobald ein Mitglied in einem Ticket-King-Ticket zum ersten Mal schreibt. Globale Slash-Befehle können etwas brauchen, bis sie in Discord erscheinen. Falls sie weiterhin fehlen, prüfe im betroffenen Kanal die Berechtigung **Anwendungsbefehle verwenden** und kontrolliere die Bot-Konsole auf die genaue Discord-Fehlermeldung. Die Einstellung wird in `data/ticket-welcome.json` gespeichert.
+The bot sends the saved text once, as soon as a member writes in a Ticket King ticket for the first time. Global slash commands can take a while to appear. If they are still missing, check the **Use Application Commands** permission in the channel and look at the bot console for the exact Discord error. The setting is stored in `data/ticket-welcome.json`.
 
-Discord erlaubt Anwendungsbefehle nur, wenn die App mit dem Scope `applications.commands` installiert wurde; der normale OAuth2-Scope `bot` schließt diesen mit ein.
+For the bot to detect tickets and write in them, its role needs access to the channel: **View Channel**, **Read Message History** and **Send Messages**. The command itself is only available to people with **Manage Server**.
 
-Damit der Bot Tickets erkennen und darin schreiben kann, muss seine Rolle in Ticket-King-Tickets Zugriff auf den Kanal oder Thread haben: **Kanal ansehen**, **Nachrichtenverlauf anzeigen** und **Nachrichten senden**. Der Befehl selbst ist nur für Personen mit **Server verwalten** verfügbar.
+## Top Streamer and VIP applications
 
-## Top-Streamer- und VIP-Bewerbungen
+In a Ticket King ticket for Top Streamer or VIP the bot automatically posts a shared application form with one button. To detect the ticket type, the **ticket name**, the **ticket category name** or the **Ticket King opening message** must contain “Top Streamer” or “VIP”.
 
-In einem Ticket-King-Ticket für Top-Streamer oder VIP veröffentlicht der Bot automatisch ein gemeinsames Bewerbungsfeld mit genau einem Button. Damit er den Tickettyp erkennt, muss im **Ticketnamen**, im **Namen der Ticket-Kategorie** oder in der **Eröffnungsnachricht von Ticket King** „Top Streamer“ beziehungsweise „VIP“ stehen.
+When closing, the bot creates a text transcript and locks the applicant's messages. The team can reopen the ticket with **Reopen ticket**. The bot needs **Send Messages**, **Read Message History**, **Embed Links**, **Attach Files** and (for closing/reopening) **Manage Channels**.
 
-Die gemeinsame Bewerbung gilt für Top Streamer und VIP. Sie fragt verpflichtend: “How often have you gone live on TikTok with Offline Dice?”, “Why do you want to become a Top Streamer or VIP?”, “What do you want to achieve as a Top Streamer or VIP?”, “What is the TikTok username you use to go live?”, “How many viewers do you have during a typical stream?” und “Do you have proof that you’re trustworthy?”. Wegen Discords Fünf-Felder-Limit wird die letzte Frage direkt nach den ersten fünf in einem zweiten Formularschritt beantwortet. Danach sieht das Team alle Antworten im Ticket und kann den Antrag übernehmen, annehmen, ablehnen oder weitere Informationen anfordern.
+Team commands: `/application panel`, `/application status` and `/application transcript` (require **Manage Channels**).
 
-Beim Schließen erstellt der Bot einen Text-Transkript-Anhang und sperrt die Nachrichten der antragstellenden Person im Ticket. Über **Reopen ticket** kann das Team das Ticket wieder öffnen. Für den Bewerbungsablauf braucht der Bot in den betroffenen Tickets **Nachrichten senden**, **Nachrichtenverlauf anzeigen**, **Links einbetten** und **Dateien anhängen**. Zum Schließen und Wiederöffnen benötigt er zusätzlich **Kanäle verwalten**.
-
-Die Bewerbungsdaten werden während der Laufzeit des Tickets in `data/ticket-applications.json` gespeichert und beim Löschen des Discord-Kanals aus der Datei entfernt. Bei flüchtigem Host-Speicher gehen sie bei einem Deployment verloren; bei dauerhaftem Speicher bleiben sie erhalten.
-
-Für das Team gibt es zusätzlich `/bewerbung panel`, `/bewerbung status` und `/bewerbung transkript`. Damit kann ein Bewerbungsfeld bei Bedarf manuell gepostet, der aktuelle Antrag eingesehen und ein Text-Transkript exportiert werden. Diese Slash-Befehle benötigen **Kanäle verwalten**.
-
-Wenn der Bot auf einem Host mit flüchtigem Dateispeicher läuft, kann dessen gespeicherte Einstellung bei einem neuen Deployment verloren gehen. In diesem Fall muss der Host einen dauerhaften Speicher für `data/ticket-welcome.json` bereitstellen.
+Application data is stored in `data/ticket-applications.json`. On hosts with ephemeral storage it is lost on deploy – use a volume (see SHOP-GUIDE.md).

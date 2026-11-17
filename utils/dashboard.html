@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bot Dashboard</title>
+<style>
+:root{--bg:#0f1115;--card:#181b22;--line:#2a2f3a;--text:#e8eaf0;--mute:#9aa3b2;--acc:#5865f2;--ok:#3ba55d;--bad:#ed4245}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,Segoe UI,Roboto,sans-serif}
+header{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:5}
+header h1{font-size:17px;margin:0;flex:1}
+main{max-width:980px;margin:0 auto;padding:16px}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+nav button{background:var(--card);color:var(--mute);border:1px solid var(--line);padding:8px 14px;border-radius:8px;cursor:pointer}
+nav button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.card h2{margin:0 0 4px;font-size:16px}
+.hint{color:var(--mute);font-size:13px;margin:0 0 12px}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 4px}
+input,select,textarea{width:100%;background:#0f1218;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:9px 10px;font:inherit}
+textarea{min-height:80px;resize:vertical}
+input[type=checkbox]{width:auto}
+input[type=color]{padding:2px;height:38px}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+button.btn{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:9px 14px;cursor:pointer;font:inherit}
+button.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--text)}
+button.btn.bad{background:var(--bad)}
+button.btn.ok{background:var(--ok)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.item{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:#12151b}
+.chk{display:flex;gap:8px;align-items:center;margin-top:10px;color:var(--text);font-size:14px}
+.pill{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;background:#262b36}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:8px;border-bottom:1px solid var(--line)}
+th{color:var(--mute);font-weight:500}
+#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#222833;border:1px solid var(--line);padding:10px 16px;border-radius:10px;display:none;z-index:9}
+#login{max-width:340px;margin:12vh auto;padding:0 16px}
+.roles{display:flex;flex-wrap:wrap;gap:6px}
+.roles label{display:flex;align-items:center;gap:6px;margin:0;padding:4px 10px;border:1px solid var(--line);border-radius:99px;color:var(--text);cursor:pointer}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+
+<div id="login" class="hidden">
+  <div class="card">
+    <h2>Dashboard Login</h2>
+    <p class="hint">Passwort aus der Umgebungsvariable DASHBOARD_PASSWORD.</p>
+    <input id="pw" type="password" placeholder="Passwort" autocomplete="current-password">
+    <div class="actions"><button class="btn" id="loginBtn">Einloggen</button></div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <h1>🤖 Bot Dashboard <span class="pill" id="botName"></span></h1>
+    <select id="guildSel" style="width:auto;min-width:200px"></select>
+    <button class="btn ghost" id="logoutBtn">Logout</button>
+  </header>
+  <main>
+    <nav id="tabs"></nav>
+    <div id="view"></div>
+  </main>
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+let G = null;      // aktuelle Serverdaten
+let guildId = "";
+let tab = "shop";
+
+function el(tag, attrs = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) e.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) e.append(kid instanceof Node ? kid : document.createTextNode(kid ?? ""));
+  return e;
+}
+function toast(msg, bad) {
+  const t = $("#toast"); t.textContent = msg; t.style.borderColor = bad ? "var(--bad)" : "var(--line)";
+  t.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = "none", 3500);
+}
+async function api(path, method = "GET", body) {
+  const res = await fetch("/api/dashboard" + path, {
+    method, credentials: "same-origin",
+    headers: { "Content-Type": "application/json", "X-Dashboard": "1" },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && path !== "/login") { showLogin(); throw new Error("Nicht eingeloggt"); }
+  if (!res.ok) throw new Error(data.error || "Fehler " + res.status);
+  return data;
+}
+async function run(fn, okMsg) {
+  try { const r = await fn(); if (okMsg) toast(okMsg); return r; } catch (e) { toast("❌ " + e.message, true); }
+}
+
+function showLogin() { $("#app").classList.add("hidden"); $("#login").classList.remove("hidden"); }
+$("#loginBtn").onclick = () => run(async () => {
+  await api("/login", "POST", { password: $("#pw").value }); $("#pw").value = ""; await boot();
+});
+$("#pw").addEventListener("keydown", e => { if (e.key === "Enter") $("#loginBtn").click(); });
+$("#logoutBtn").onclick = async () => { await api("/logout", "POST").catch(() => {}); showLogin(); };
+
+async function boot() {
+  let info;
+  try { info = await api("/guilds"); } catch { return showLogin(); }
+  $("#login").classList.add("hidden"); $("#app").classList.remove("hidden");
+  $("#botName").textContent = info.botName || "offline";
+  const sel = $("#guildSel"); sel.replaceChildren();
+  info.guilds.forEach(g => sel.append(el("option", { value: g.id }, g.name)));
+  guildId = localStorage.getItem("guild") && info.guilds.some(g => g.id === localStorage.getItem("guild")) ? localStorage.getItem("guild") : (info.guilds[0]?.id || "");
+  sel.value = guildId;
+  sel.onchange = () => { guildId = sel.value; localStorage.setItem("guild", guildId); load(); };
+  if (!guildId) { $("#view").replaceChildren(el("p", {}, "Der Bot ist auf keinem Server.")); return; }
+  renderTabs(); load();
+}
+async function load() { G = await run(() => api("/guild/" + guildId)); if (G) render(); }
+
+const TABS = [["shop", "🛒 Shop & Kanäle"], ["products", "📦 Produkte"], ["payments", "💳 Zahlungsarten"], ["orders", "🧾 Bestellungen"], ["funcs", "⚙️ Funktionen"]];
+function renderTabs() {
+  const nav = $("#tabs"); nav.replaceChildren();
+  TABS.forEach(([id, name]) => nav.append(el("button", { class: id === tab ? "on" : "", onclick: () => { tab = id; renderTabs(); render(); } }, name)));
+}
+function render() {
+  const v = $("#view"); v.replaceChildren();
+  ({ shop: renderShop, products: renderProducts, payments: renderPayments, orders: renderOrders, funcs: renderFuncs })[tab](v);
+}
+
+function field(label, input) { return el("div", {}, el("label", {}, label), input); }
+function channelSelect(value, withNone = true) {
+  const s = el("select", {}, withNone ? el("option", { value: "" }, "— nicht gesetzt —") : []);
+  G.channels.forEach(c => s.append(el("option", { value: c.id }, "#" + c.name)));
+  s.value = value || ""; return s;
+}
+function roleChecks(selected) {
+  const box = el("div", { class: "roles" });
+  G.roles.forEach(r => box.append(el("label", {}, el("input", { type: "checkbox", value: r.id, checked: selected.includes(r.id) ? "" : false }), r.name)));
+  box.values = () => [...box.querySelectorAll("input:checked")].map(i => i.value);
+  return box;
+}
+
+// ---------- Shop & Kanäle ----------
+function renderShop(v) {
+  const s = G.settings;
+  const shopCh = channelSelect(s.shopChannelId), codeCh = channelSelect(s.codeChannelId);
+  const keyword = el("input", { value: s.ticketKeyword });
+  const color = el("input", { type: "color", value: s.color });
+  const title = el("input", { value: s.shopTitle });
+  const desc = el("textarea", {}, s.shopDescription);
+  const buy = el("input", { value: s.buyInfo });
+  const pTitle = el("input", { value: s.panelTitle });
+  const pDesc = el("textarea", {}, s.panelDescription);
+  const roles = roleChecks(s.staffRoleIds);
+
+  v.append(el("div", { class: "card" },
+    el("h2", {}, "Kanäle"),
+    el("p", { class: "hint" }, "Shop-Kanal = hier erscheint der Katalog mit Bildern. Code-Kanal = privater Kanal (nur Team!), in den gesendete Codes kommen."),
+    el("div", { class: "row" }, field("Shop-Kanal (Katalog)", shopCh), field("Privater Code-Kanal", codeCh)),
+    el("label", {}, "Team-Rollen (werden bei Zahlung/Code gepingt und dürfen Codes bestätigen)"), roles
+  ));
+  v.append(el("div", { class: "card" },
+    el("h2", {}, "Ticket-Erkennung"),
+    el("p", { class: "hint" }, "Jeder neue Ticket-Kanal, dessen Name dieses Stichwort enthält (z. B. 228-buy-ticket), bekommt automatisch die Auswahl für Produkt & Zahlungsart."),
+    field("Stichwort im Kanalnamen", keyword),
+    el("div", { class: "row" }, field("Panel-Titel im Ticket", pTitle), field("Embed-Farbe", color)),
+    field("Panel-Text im Ticket", pDesc)
+  ));
+  v.append(el("div", { class: "card" },
+    el("h2", {}, "Katalog-Texte"),
+    el("div", { class: "row" }, field("Titel", title), field("Kauf-Hinweis", buy)),
+    field("Beschreibung", desc),
+    el("div", { class: "actions" },
+      el("button", { class: "btn", onclick: () => run(async () => {
+        G.settings = await api(`/guild/${guildId}/settings`, "PUT", {
+          shopChannelId: shopCh.value, codeChannelId: codeCh.value, ticketKeyword: keyword.value, staffRoleIds: roles.values(),
+          color: color.value, shopTitle: title.value, shopDescription: desc.value, buyInfo: buy.value, panelTitle: pTitle.value, panelDescription: pDesc.value
+        });
+      }, "✅ Gespeichert") }, "Speichern"),
+      el("button", { class: "btn ok", onclick: () => run(() => api(`/guild/${guildId}/post-catalog`, "POST"), "✅ Katalog gepostet/aktualisiert") }, "📣 Katalog im Shop-Kanal posten / aktualisieren")
+    ),
+    el("p", { class: "hint" }, "Erst speichern, dann posten. Beim erneuten Posten werden die alten Katalog-Nachrichten ersetzt.")
+  ));
+}
+
+// ---------- Produkte ----------
+function renderProducts(v) {
+  let list = G.products.map(p => ({ ...p }));
+  const holder = el("div");
+  const draw = () => {
+    holder.replaceChildren();
+    list.forEach((p, i) => {
+      const bind = (key, input) => { input.oninput = () => p[key] = input.value; return input; };
+      const stock = el("input", { type: "checkbox", checked: p.inStock !== false ? "" : false });
+      stock.onchange = () => p.inStock = stock.checked;
+      holder.append(el("div", { class: "item" },
+        el("div", { class: "row" },
+          field("Name", bind("name", el("input", { value: p.name || "" }))),
+          field("Preis (Text, z. B. 5,00 €)", bind("price", el("input", { value: p.price || "" }))),
+          field("Emoji (optional)", bind("emoji", el("input", { value: p.emoji || "" })))
+        ),
+        field("Beschreibung", bind("description", el("textarea", {}, p.description || ""))),
+        field("Bild-URL (https://…)", bind("imageUrl", el("input", { value: p.imageUrl || "", placeholder: "https://i.imgur.com/…png" }))),
+        el("label", { class: "chk" }, stock, "Auf Lager"),
+        el("div", { class: "actions" },
+          el("button", { class: "btn ghost", onclick: () => { if (i > 0) { [list[i - 1], list[i]] = [list[i], list[i - 1]]; draw(); } } }, "↑"),
+          el("button", { class: "btn ghost", onclick: () => { if (i < list.length - 1) { [list[i + 1], list[i]] = [list[i], list[i + 1]]; draw(); } } }, "↓"),
+          el("button", { class: "btn bad", onclick: () => { list.splice(i, 1); draw(); } }, "Löschen")
+        )
+      ));
+    });
+    if (!list.length) holder.append(el("p", { class: "hint" }, "Noch keine Produkte."));
+  };
+  draw();
+  v.append(el("div", { class: "card" },
+    el("h2", {}, "Produkte (max. 25)"),
+    el("p", { class: "hint" }, "Bilder: lade sie z. B. in einen Discord-Kanal hoch und kopiere den Bild-Link, oder nutze imgur. Danach unter „Shop & Kanäle“ den Katalog neu posten."),
+    holder,
+    el("div", { class: "actions" },
+      el("button", { class: "btn ghost", onclick: () => { if (list.length < 25) { list.push({ name: "Neues Produkt", price: "", inStock: true }); draw(); } } }, "➕ Produkt hinzufügen"),
+      el("button", { class: "btn", onclick: () => run(async () => { G.products = await api(`/guild/${guildId}/products`, "PUT", { products: list }); list = G.products.map(p => ({ ...p })); draw(); }, "✅ Produkte gespeichert") }, "Speichern")
+    )
+  ));
+}
+
+// ---------- Zahlungsarten ----------
+function renderPayments(v) {
+  let list = G.paymentMethods.map(m => ({ ...m }));
+  const holder = el("div");
+  const draw = () => {
+    holder.replaceChildren();
+    list.forEach((m, i) => {
+      const bind = (key, input) => { input.oninput = () => m[key] = input.value; return input; };
+      const en = el("input", { type: "checkbox", checked: m.enabled ? "" : false }); en.onchange = () => m.enabled = en.checked;
+      const code = el("input", { type: "checkbox", checked: m.askCode ? "" : false }); code.onchange = () => m.askCode = code.checked;
+      holder.append(el("div", { class: "item" },
+        el("div", { class: "row" },
+          field("Name", bind("label", el("input", { value: m.label || "" }))),
+          field("Emoji", bind("emoji", el("input", { value: m.emoji || "" })))
+        ),
+        field("Anleitung für den Kunden (IBAN, LTC-Adresse, …)", bind("instructions", el("textarea", {}, m.instructions || ""))),
+        el("label", { class: "chk" }, en, "Aktiv (im Ticket auswählbar)"),
+        el("label", { class: "chk" }, code, "Kunde kann einen Code senden (Button „Code senden“, z. B. Paysafe)"),
+        el("div", { class: "actions" }, el("button", { class: "btn bad", onclick: () => { list.splice(i, 1); draw(); } }, "Löschen"))
+      ));
+    });
+  };
+  draw();
+  v.append(el("div", { class: "card" },
+    el("h2", {}, "Zahlungsarten"),
+    el("p", { class: "hint" }, "Das sieht der Kunde im Ticket, nachdem er die Zahlungsart gewählt hat. Trage hier deine echten Daten ein."),
+    holder,
+    el("div", { class: "actions" },
+      el("button", { class: "btn ghost", onclick: () => { if (list.length < 25) { list.push({ label: "Neue Zahlungsart", enabled: true, askCode: false, instructions: "" }); draw(); } } }, "➕ Zahlungsart hinzufügen"),
+      el("button", { class: "btn", onclick: () => run(async () => { G.paymentMethods = await api(`/guild/${guildId}/payments`, "PUT", { paymentMethods: list }); list = G.paymentMethods.map(m => ({ ...m })); draw(); }, "✅ Zahlungsarten gespeichert") }, "Speichern")
+    )
+  ));
+}
+
+// ---------- Bestellungen ----------
+const STATUS = { open: "offen", awaiting_payment: "wartet auf Zahlung", paid_claimed: "Kunde sagt: bezahlt", code_sent: "Code gesendet", paid: "bezahlt ✅", code_invalid: "Code ungültig", closed: "geschlossen" };
+function renderOrders(v) {
+  const rows = G.orders.map(o => {
+    const p = G.products.find(x => x.id === o.productId), m = G.paymentMethods.find(x => x.id === o.methodId);
+    return el("tr", {},
+      el("td", {}, new Date(o.createdAt).toLocaleString("de-DE")),
+      el("td", {}, o.userId || "—"),
+      el("td", {}, p ? p.name : "—"),
+      el("td", {}, m ? m.label : "—"),
+      el("td", {}, STATUS[o.status] || o.status),
+      el("td", {}, o.codeMasked || "")
+    );
+  });
+  v.append(el("div", { class: "card" },
+    el("h2", {}, "Letzte Bestellungen"),
+    el("p", { class: "hint" }, "Aus Sicherheitsgründen steht der volle Code nur im privaten Code-Kanal, hier nur ein Anfang."),
+    rows.length ? el("div", { style: "overflow:auto" }, el("table", {}, el("thead", {}, el("tr", {}, ["Zeit", "Nutzer-ID", "Produkt", "Zahlung", "Status", "Code"].map(h => el("th", {}, h)))), el("tbody", {}, rows))) : el("p", {}, "Noch keine Bestellungen."),
+    el("div", { class: "actions" }, el("button", { class: "btn ghost", onclick: load }, "🔄 Aktualisieren"))
+  ));
+}
+
+// ---------- Bestehende Funktionen ----------
+function renderFuncs(v) {
+  const welcome = el("textarea", { style: "min-height:120px" }, G.welcomeMessage);
+  v.append(el("div", { class: "card" },
+    el("h2", {}, "Ticket-Willkommensnachricht"),
+    el("p", { class: "hint" }, "Wird in neuen Ticket-King-Tickets gesendet. {user} = Erwähnung, {username} = Name. Leer lassen = aus."),
+    welcome,
+    el("div", { class: "actions" }, el("button", { class: "btn", onclick: () => run(() => api(`/guild/${guildId}/welcome`, "PUT", { message: welcome.value }), "✅ Gespeichert") }, "Speichern"))
+  ));
+
+  const text = el("input", { value: G.bot.activityText });
+  const type = el("select", {}, [[0, "Spielt"], [2, "Hört zu"], [3, "Schaut"], [5, "Tritt an in"]].map(([k, n]) => el("option", { value: k }, n)));
+  type.value = String(G.bot.activityType);
+  v.append(el("div", { class: "card" },
+    el("h2", {}, "Bot-Status"),
+    el("div", { class: "row" }, field("Aktivität", type), field("Text", text)),
+    el("div", { class: "actions" }, el("button", { class: "btn", onclick: () => run(async () => { G.bot = await api("/bot", "PUT", { activityText: text.value, activityType: type.value }); }, "✅ Status geändert") }, "Speichern"))
+  ));
+
+  const ch = channelSelect("", false), roles = roleChecks([]);
+  v.append(el("div", { class: "card" },
+    el("h2", {}, "Support-Ticket-Panel posten"),
+    el("p", { class: "hint" }, "Wie /ticketpanel: Postet das Panel (Support, Report, …) in einen Kanal deiner Wahl."),
+    field("Kanal", ch), el("label", {}, "Team-Rollen mit Zugriff"), roles,
+    el("div", { class: "actions" }, el("button", { class: "btn", onclick: () => run(() => api(`/guild/${guildId}/post-ticketpanel`, "POST", { channelId: ch.value, roleIds: roles.values() }), "✅ Panel gepostet") }, "Panel posten"))
+  ));
+}
+
+boot();
+</script>
+</body>
+</html>
